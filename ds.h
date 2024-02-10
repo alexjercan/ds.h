@@ -15,7 +15,8 @@
             ##__VA_ARGS__)
 
 #define LOG_INFO(format, ...)                                                  \
-    fprintf(stdout, "INFO: " format "\n", ##__VA_ARGS__)
+    fprintf(stdout, "INFO: %s:%d: " format "\n", __FILE__, __LINE__,           \
+            ##__VA_ARGS__)
 
 #define DA_INIT_CAPACITY 8192
 #define da_append(da, item)                                                    \
@@ -51,6 +52,14 @@
         }                                                                      \
         (da)->count--;                                                         \
     } while (0)
+
+// PRIORITY QUEUE
+//
+// The priority queue is implemented as a heap, where you can define the
+// comparison function to use when inserting items. The comparison function
+// should return a positive value if the first item has higher priority than
+// the second item, a negative value if the second item has higher priority than
+// the first item, and 0 if the items have the same priority.
 
 struct ds_priority_queue;
 
@@ -112,6 +121,7 @@ int ds_priority_queue_pull(struct ds_priority_queue *pq, void **item) {
 
     if (pq->count == 0) {
         LOG_ERROR("Priority queue is empty");
+        *item = NULL;
         return_defer(1);
     }
 
@@ -152,6 +162,7 @@ int ds_priority_queue_peek(struct ds_priority_queue *pq, void **item) {
 
     if (pq->count == 0) {
         LOG_ERROR("Priority queue is empty");
+        *item = NULL;
         return_defer(1);
     }
 
