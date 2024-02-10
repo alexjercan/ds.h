@@ -15,10 +15,10 @@
 
 // MEMORY MANAGEMENT
 //
-// The memory management macros are used to allocate, reallocate and free memory,
-// and to exit the program. The DS_MALLOC macro is used to allocate memory, the
-// DS_REALLOC macro is used to reallocate memory, the DS_FREE macro is used to
-// free memory, and the DS_EXIT macro is used to exit the program.
+// The memory management macros are used to allocate, reallocate and free
+// memory, and to exit the program. The DS_MALLOC macro is used to allocate
+// memory, the DS_REALLOC macro is used to reallocate memory, the DS_FREE macro
+// is used to free memory, and the DS_EXIT macro is used to exit the program.
 //
 // Options:
 // - DS_NO_STDLIB: Disables the use of the standard library
@@ -38,6 +38,9 @@
 #error                                                                         \
     "Must define DS_MALLOC, DS_REALLOC, DS_FREE and DS_EXIT when DS_NO_STDLIB is defined"
 #endif
+
+#define NULL 0
+
 #endif
 
 // LOGGING
@@ -120,7 +123,7 @@
 #define ds_da_append(da, item)                                                 \
     do {                                                                       \
         if ((da)->count >= (da)->capacity) {                                   \
-            size_t new_capacity = (da)->capacity * 2;                          \
+            unsigned int new_capacity = (da)->capacity * 2;                    \
             if (new_capacity == 0) {                                           \
                 new_capacity = DA_INIT_CAPACITY;                               \
             }                                                                  \
@@ -166,8 +169,8 @@ void ds_priority_queue_free(struct ds_priority_queue *pq);
 
 struct ds_priority_queue {
         void **items;
-        size_t count;
-        size_t capacity;
+        unsigned int count;
+        unsigned int capacity;
 
         int (*compare)(const void *, const void *);
 };
@@ -210,16 +213,16 @@ int ds_priority_queue_pull(struct ds_priority_queue *pq, void **item) {
     *item = pq->items[0];
     pq->items[0] = pq->items[pq->count - 1];
 
-    size_t index = 0;
-    size_t swap = index;
+    unsigned int index = 0;
+    unsigned int swap = index;
     do {
-        size_t left = 2 * index + 1;
+        unsigned int left = 2 * index + 1;
         if (left < pq->count &&
             pq->compare(pq->items[left], pq->items[swap]) > 0) {
             swap = left;
         }
 
-        size_t right = 2 * index + 2;
+        unsigned int right = 2 * index + 2;
         if (right < pq->count &&
             pq->compare(pq->items[right], pq->items[swap]) > 0) {
             swap = right;
