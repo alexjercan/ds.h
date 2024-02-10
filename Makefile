@@ -2,6 +2,7 @@ CC = gcc
 CFLAGS = -Wall -Wextra -std=c99
 BUILD_DIR = build
 SRC_DIR = examples
+LIB_HEADER = ds.h
 
 # Get a list of all C files in the examples folder
 SRCS = $(wildcard $(SRC_DIR)/*.c)
@@ -16,7 +17,7 @@ EXECS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%,$(SRCS))
 all: $(EXECS)
 
 # Compile each source file into object files
-$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c $(LIB_HEADER) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -I. -c $< -o $@
 
 # Link each object file into executables

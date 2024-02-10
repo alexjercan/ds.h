@@ -11,7 +11,7 @@ struct simple_node {
 struct simple_node *simple_node_new(int priority, const char *value) {
     struct simple_node *node = malloc(sizeof(struct simple_node));
     if (node == NULL) {
-        LOG_ERROR("Failed to allocate memory");
+        DS_LOG_ERROR("Failed to allocate memory");
         return NULL;
     }
 
