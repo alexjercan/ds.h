@@ -1,3 +1,6 @@
+#ifndef DS_H
+#define DS_H
+
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -49,32 +52,25 @@
         (da)->count--;                                                         \
     } while (0)
 
-struct simple_node {
-    int priority;
-    const char *value;
-};
+struct ds_priority_queue;
 
-struct simple_node *simple_node_new(int priority, const char *value) {
-    struct simple_node *node = malloc(sizeof(struct simple_node));
-    if (node == NULL) {
-        LOG_ERROR("Failed to allocate memory");
-        return NULL;
-    }
+void ds_priority_queue_init(struct ds_priority_queue *pq,
+                            int (*compare)(const void *, const void *));
+int ds_priority_queue_insert(struct ds_priority_queue *pq, void *item);
+int ds_priority_queue_pull(struct ds_priority_queue *pq, void **item);
+int ds_priority_queue_peek(struct ds_priority_queue *pq, void **item);
+int ds_priority_queue_empty(struct ds_priority_queue *pq);
+void ds_priority_queue_free(struct ds_priority_queue *pq);
 
-    node->priority = priority;
-    node->value = value;
-    return node;
-}
+#endif // DS_H
 
-int simple_node_compare_max(const void *a, const void *b) {
-    return ((struct simple_node *)a)->priority - ((struct simple_node *)b)->priority;
-}
+#ifdef DS_IMPLEMENTATION
+#define DS_PQ_IMPLEMENTATION
+#endif // DS_IMPLEMENTATION
 
-int simple_node_compare_min(const void *a, const void *b) {
-    return ((struct simple_node *)b)->priority - ((struct simple_node *)a)->priority;
-}
+#ifdef DS_PQ_IMPLEMENTATION
 
-struct priority_queue {
+struct ds_priority_queue {
         void **items;
         size_t count;
         size_t capacity;
@@ -82,14 +78,15 @@ struct priority_queue {
         int (*compare)(const void *, const void *);
 };
 
-void priority_queue_init(struct priority_queue *pq, int (*compare)(const void *, const void *)) {
+void ds_priority_queue_init(struct ds_priority_queue *pq,
+                            int (*compare)(const void *, const void *)) {
     pq->items = NULL;
     pq->count = 0;
     pq->capacity = 0;
     pq->compare = compare;
 }
 
-int priority_queue_insert(struct priority_queue *pq, void *item) {
+int ds_priority_queue_insert(struct ds_priority_queue *pq, void *item) {
     int result = 0;
 
     da_append(pq, item);
@@ -110,7 +107,7 @@ defer:
     return result;
 }
 
-int priority_queue_pull(struct priority_queue *pq, void **item) {
+int ds_priority_queue_pull(struct ds_priority_queue *pq, void **item) {
     int result = 0;
 
     if (pq->count == 0) {
@@ -121,16 +118,18 @@ int priority_queue_pull(struct priority_queue *pq, void **item) {
     *item = pq->items[0];
     pq->items[0] = pq->items[pq->count - 1];
 
-    int index = 0;
-    int swap = index;
+    size_t index = 0;
+    size_t swap = index;
     do {
-        int left = 2 * index + 1;
-        if (left < pq->count && pq->compare(pq->items[left], pq->items[swap]) > 0) {
+        size_t left = 2 * index + 1;
+        if (left < pq->count &&
+            pq->compare(pq->items[left], pq->items[swap]) > 0) {
             swap = left;
         }
 
-        int right = 2 * index + 2;
-        if (right < pq->count && pq->compare(pq->items[right], pq->items[swap]) > 0) {
+        size_t right = 2 * index + 2;
+        if (right < pq->count &&
+            pq->compare(pq->items[right], pq->items[swap]) > 0) {
             swap = right;
         }
 
@@ -148,7 +147,7 @@ defer:
     return result;
 }
 
-int priority_queue_peek(struct priority_queue *pq, void **item) {
+int ds_priority_queue_peek(struct ds_priority_queue *pq, void **item) {
     int result = 0;
 
     if (pq->count == 0) {
@@ -162,11 +161,11 @@ defer:
     return result;
 }
 
-int priority_queue_empty(struct priority_queue *pq) {
+int ds_priority_queue_empty(struct ds_priority_queue *pq) {
     return pq->count == 0;
 }
 
-void priority_queue_free(struct priority_queue *pq) {
+void ds_priority_queue_free(struct ds_priority_queue *pq) {
     free(pq->items);
     pq->items = NULL;
     pq->count = 0;
@@ -174,30 +173,4 @@ void priority_queue_free(struct priority_queue *pq) {
     pq->compare = NULL;
 }
 
-int main() {
-    struct priority_queue pq;
-    priority_queue_init(&pq, simple_node_compare_max);
-    priority_queue_init(&pq, simple_node_compare_min);
-
-    struct simple_node *node[] = {
-        simple_node_new(3, "apple"),
-        simple_node_new(2, "banana"),
-        simple_node_new(5, "cherry"),
-        simple_node_new(1, "date"),
-        simple_node_new(7, "elderberry"),
-    };
-
-    for (size_t i = 0; i < sizeof(node) / sizeof(node[0]); i++) {
-        priority_queue_insert(&pq, node[i]);
-    }
-
-    struct simple_node *item;
-    while (!priority_queue_empty(&pq)) {
-        priority_queue_pull(&pq, (void **)&item);
-        printf("Pulled: %d: %s\n", item->priority, item->value);
-        free(item);
-    }
-
-    priority_queue_free(&pq);
-    return 0;
-}
+#endif // DS_PQ_IMPLEMENTATION
