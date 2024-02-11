@@ -317,5 +317,6 @@ int main() {
     }
 
     world_free(&w);
+    free(p.items);
     return 0;
 }
