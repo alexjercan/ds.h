@@ -216,6 +216,8 @@ int ds_priority_queue_pull(struct ds_priority_queue *pq, void **item) {
     unsigned int index = 0;
     unsigned int swap = index;
     do {
+        index = swap;
+
         unsigned int left = 2 * index + 1;
         if (left < pq->count &&
             pq->compare(pq->items[left], pq->items[swap]) > 0) {
@@ -228,13 +230,9 @@ int ds_priority_queue_pull(struct ds_priority_queue *pq, void **item) {
             swap = right;
         }
 
-        if (swap != index) {
-            void *temp = pq->items[index];
-            pq->items[index] = pq->items[swap];
-            pq->items[swap] = temp;
-
-            index = swap;
-        }
+        void *temp = pq->items[index];
+        pq->items[index] = pq->items[swap];
+        pq->items[swap] = temp;
     } while (swap != index);
 
     pq->count--;
