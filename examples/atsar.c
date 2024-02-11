@@ -5,14 +5,6 @@
 #define DS_PQ_IMPLEMENTATION
 #include "../ds.h"
 
-#define LINE_MAX 1024
-
-struct lines {
-        char **items;
-        int count;
-        int capacity;
-};
-
 struct world {
         int width;
         int height;
@@ -36,98 +28,6 @@ int world_set(struct world *w, int x, int y, unsigned char value) {
         return 1;
     }
     w->map[y * w->width + x] = value;
-    return 0;
-}
-
-int world_get(struct world *w, int x, int y, unsigned char *value) {
-    if (x < 0 || x >= w->width || y < 0 || y >= w->height) {
-        DS_LOG_ERROR("Invalid coordinates");
-        return 1;
-    }
-
-    *value = w->map[y * w->width + x];
-    return 0;
-}
-
-int world_from_file(struct world *w, const char *filename) {
-    FILE *file = NULL;
-    if (filename == NULL) {
-        file = stdin;
-    } else {
-        file = fopen(filename, "r");
-        if (file == NULL) {
-            DS_LOG_ERROR("Failed to open file %s", filename);
-            return 1;
-        }
-    }
-
-    struct lines lines = {0};
-    char line[LINE_MAX];
-    int width = 0;
-    int height = 0;
-    while (fgets(line, LINE_MAX * sizeof(char), file) != NULL) {
-        int len = strlen(line);
-        if (len > 0 && line[len - 1] == '\n') {
-            line[len - 1] = '\0';
-        }
-        len = len - 1;
-
-        if (width == 0) {
-            width = len;
-        } else if (len != width) {
-            DS_LOG_ERROR("Invalid map width");
-            return 1;
-        }
-        height++;
-
-        char *line_copy = (char *)malloc((len + 1) * sizeof(char));
-        if (line_copy == NULL) {
-            DS_LOG_ERROR("Failed to allocate memory for line");
-            return 1;
-        }
-
-        strcpy(line_copy, line);
-        ds_da_append(&lines, line_copy);
-    }
-
-    if (filename != NULL) {
-        fclose(file);
-    }
-
-    if (world_init(w, width, height) != 0) {
-        return 1;
-    }
-
-    for (int y = 0; y < height; y++) {
-        char *line = lines.items[y];
-        for (int x = 0; x < width; x++) {
-            char c = line[x];
-            if (c == '.') {
-                world_set(w, x, y, 0);
-            } else if (c == '#') {
-                world_set(w, x, y, 1);
-            } else {
-                DS_LOG_ERROR("Invalid character in map: %d", c);
-                return 1;
-            }
-        }
-    }
-
-    for (int i = 0; i < lines.count; i++) {
-        free(lines.items[i]);
-    }
-    free(lines.items);
-
-    return 0;
-}
-
-int world_print(struct world *w) {
-    for (int y = 0; y < w->height; y++) {
-        for (int x = 0; x < w->width; x++) {
-            printf("%c", w->map[y * w->width + x] == 0 ? '.' : '#');
-        }
-        printf("\n");
-    }
     return 0;
 }
 
@@ -306,6 +206,98 @@ defer:
     free(f_score);
 
     return result;
+}
+
+/* Specific to the executable */
+
+#define MAX_LINE_LEN 1024
+
+struct lines {
+        char **items;
+        int count;
+        int capacity;
+};
+
+int world_from_file(struct world *w, const char *filename) {
+    FILE *file = NULL;
+    if (filename == NULL) {
+        file = stdin;
+    } else {
+        file = fopen(filename, "r");
+        if (file == NULL) {
+            DS_LOG_ERROR("Failed to open file %s", filename);
+            return 1;
+        }
+    }
+
+    struct lines lines = {0};
+    char line[MAX_LINE_LEN];
+    int width = 0;
+    int height = 0;
+    while (fgets(line, MAX_LINE_LEN * sizeof(char), file) != NULL) {
+        int len = strlen(line);
+        if (len > 0 && line[len - 1] == '\n') {
+            line[len - 1] = '\0';
+        }
+        len = len - 1;
+
+        if (width == 0) {
+            width = len;
+        } else if (len != width) {
+            DS_LOG_ERROR("Invalid map width");
+            return 1;
+        }
+        height++;
+
+        char *line_copy = (char *)malloc((len + 1) * sizeof(char));
+        if (line_copy == NULL) {
+            DS_LOG_ERROR("Failed to allocate memory for line");
+            return 1;
+        }
+
+        strcpy(line_copy, line);
+        ds_da_append(&lines, line_copy);
+    }
+
+    if (filename != NULL) {
+        fclose(file);
+    }
+
+    if (world_init(w, width, height) != 0) {
+        return 1;
+    }
+
+    for (int y = 0; y < height; y++) {
+        char *line = lines.items[y];
+        for (int x = 0; x < width; x++) {
+            char c = line[x];
+            if (c == '.') {
+                world_set(w, x, y, 0);
+            } else if (c == '#') {
+                world_set(w, x, y, 1);
+            } else {
+                DS_LOG_ERROR("Invalid character in map: %d", c);
+                return 1;
+            }
+        }
+    }
+
+    for (int i = 0; i < lines.count; i++) {
+        free(lines.items[i]);
+    }
+    free(lines.items);
+
+    return 0;
+}
+
+int world_print(struct world *w) {
+    for (int y = 0; y < w->height; y++) {
+        for (int x = 0; x < w->width; x++) {
+            printf("%c", w->map[y * w->width + x] == 0 ? '.' : '#');
+        }
+        printf("\n");
+    }
+    return 0;
 }
 
 int main() {
