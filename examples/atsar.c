@@ -31,9 +31,8 @@ int world_set(struct world *w, int x, int y, unsigned char value) {
     return 0;
 }
 
-int world_free(struct world *w) {
+void world_free(struct world *w) {
     free(w->map);
-    return 0;
 }
 
 struct position {
@@ -73,14 +72,22 @@ int position_node_compare_min(const void *a, const void *b) {
     return ((struct position_node *)b)->f - ((struct position_node *)a)->f;
 }
 
-struct path {
+void position_node_free(struct position_node *p) {
+    free(p);
+}
+
+struct position_array {
         struct position *items;
         int count;
         int capacity;
 };
 
+void position_array_free(struct position_array *p) {
+    free(p->items);
+}
+
 int reconstruct_path(struct world *w, int *came_from, struct position current,
-                     struct path *p) {
+                     struct position_array *p) {
     ds_da_append(p, current);
     int current_index = position_hash(w, current);
 
@@ -95,7 +102,7 @@ int reconstruct_path(struct world *w, int *came_from, struct position current,
 }
 
 int a_star(struct world *w, struct position start, struct position end,
-           struct path *p) {
+           struct position_array *p) {
     int result = 0;
     int num_nodes = w->width * w->height;
 
@@ -188,17 +195,17 @@ int a_star(struct world *w, struct position start, struct position end,
             }
         }
 
-        free(current_node);
+        position_node_free(current_node);
     }
 
 defer:
     if (current_node != NULL) {
-        free(current_node);
+        position_node_free(current_node);
     }
     while (ds_priority_queue_empty(&open_set) == 0) {
         struct position_node *node = NULL;
         ds_priority_queue_pull(&open_set, (void **)&node);
-        free(node);
+        position_node_free(node);
     }
     ds_priority_queue_free(&open_set);
     free(came_from);
@@ -208,15 +215,41 @@ defer:
     return result;
 }
 
+int pathfind(struct position_array *obstacles, int width, int height, struct position start, struct position end, struct position_array *p) {
+    struct world w;
+    if (world_init(&w, width, height) != 0) {
+        return 1;
+    }
+
+    for (int i = 0; i < obstacles->count; i++) {
+        struct position p = obstacles->items[i];
+        if (world_set(&w, p.x, p.y, 1) != 0) {
+            return 1;
+        }
+    }
+
+    int result = a_star(&w, start, end, p);
+
+    world_free(&w);
+    return result;
+}
+
 /* Specific to the executable */
 
 #define MAX_LINE_LEN 1024
 
-struct lines {
+struct line_array {
         char **items;
         int count;
         int capacity;
 };
+
+void line_array_free(struct line_array *l) {
+    for (int i = 0; i < l->count; i++) {
+        free(l->items[i]);
+    }
+    free(l->items);
+}
 
 int world_from_file(struct world *w, const char *filename) {
     FILE *file = NULL;
@@ -230,7 +263,7 @@ int world_from_file(struct world *w, const char *filename) {
         }
     }
 
-    struct lines lines = {0};
+    struct line_array lines = {0};
     char line[MAX_LINE_LEN];
     int width = 0;
     int height = 0;
@@ -282,10 +315,7 @@ int world_from_file(struct world *w, const char *filename) {
         }
     }
 
-    for (int i = 0; i < lines.count; i++) {
-        free(lines.items[i]);
-    }
-    free(lines.items);
+    line_array_free(&lines);
 
     return 0;
 }
@@ -308,7 +338,7 @@ int main() {
 
     world_print(&w);
 
-    struct path p = {0};
+    struct position_array p = {0};
     struct position start = {0, 0};
     struct position end = {w.width - 1, w.height - 1};
 
