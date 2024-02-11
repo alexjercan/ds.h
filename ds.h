@@ -91,7 +91,7 @@
 #define DS_LOG_INFO(format, ...)                                               \
     fprintf(stdout,                                                            \
             DS_TERMINAL_BLUE "INFO" DS_TERMINAL_RESET ": %s:%d: " format "\n", \
-            __FILE__, __LINE__, __LINE__, ##__VA_ARGS__)
+            __FILE__, __LINE__, ##__VA_ARGS__)
 #endif
 
 #define DS_PANIC(format, ...)                                                  \
