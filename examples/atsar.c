@@ -298,7 +298,7 @@ int a_star(struct world *w, struct position start, struct position end, struct p
 
 int main() {
     struct world w;
-    if (world_from_file(&w, "world.txt") != 0) {
+    if (world_from_file(&w, "examples/world.txt") != 0) {
         return 1;
     }
 
