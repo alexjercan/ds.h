@@ -215,25 +215,6 @@ defer:
     return result;
 }
 
-int pathfind(struct position_array *obstacles, int width, int height, struct position start, struct position end, struct position_array *p) {
-    struct world w;
-    if (world_init(&w, width, height) != 0) {
-        return 1;
-    }
-
-    for (int i = 0; i < obstacles->count; i++) {
-        struct position p = obstacles->items[i];
-        if (world_set(&w, p.x, p.y, 1) != 0) {
-            return 1;
-        }
-    }
-
-    int result = a_star(&w, start, end, p);
-
-    world_free(&w);
-    return result;
-}
-
 /* Specific to the executable */
 
 #define MAX_LINE_LEN 1024
