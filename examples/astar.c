@@ -31,9 +31,7 @@ int world_set(struct world *w, int x, int y, unsigned char value) {
     return 0;
 }
 
-void world_free(struct world *w) {
-    free(w->map);
-}
+void world_free(struct world *w) { free(w->map); }
 
 struct position {
         int x;
@@ -72,9 +70,7 @@ int position_node_compare_min(const void *a, const void *b) {
     return ((struct position_node *)b)->f - ((struct position_node *)a)->f;
 }
 
-void position_node_free(struct position_node *p) {
-    free(p);
-}
+void position_node_free(struct position_node *p) { free(p); }
 
 struct position_array {
         struct position *items;
@@ -82,9 +78,7 @@ struct position_array {
         int capacity;
 };
 
-void position_array_free(struct position_array *p) {
-    free(p->items);
-}
+void position_array_free(struct position_array *p) { free(p->items); }
 
 int reconstruct_path(struct world *w, int *came_from, struct position current,
                      struct position_array *p) {
