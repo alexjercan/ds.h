@@ -11,6 +11,10 @@
 // implementation of all the data structures and utilities
 // - DS_PQ_IMPLEMENTATION: Define this macro in one source file to include the
 //  implementation of the priority queue data structure
+//  - DS_SB_IMPLEMENTATION: Define this macro in one source file to include the
+//  implementation of the string builder utility
+//  - DS_SS_IMPLEMENTATION: Define this macro in one source file to include the
+//  implementation of the string slice utility
 //
 // MEMORY MANAGEMENT
 //
