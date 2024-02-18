@@ -104,7 +104,7 @@ int a_star(struct world *w, struct position start, struct position end,
     // Initially, only the start node is known.
     // This is usually implemented as a min-heap or priority queue rather than a
     // hash-set.
-    struct ds_priority_queue open_set;
+    ds_priority_queue open_set;
     ds_priority_queue_init(&open_set, position_node_compare_min);
 
     struct position_node *start_node =

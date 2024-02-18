@@ -25,7 +25,7 @@ int simple_node_compare_max(const void *a, const void *b) {
 }
 
 int main() {
-    struct ds_priority_queue pq;
+    ds_priority_queue pq;
     ds_priority_queue_init(&pq, simple_node_compare_max);
 
     struct simple_node *node[] = {
