@@ -197,30 +197,38 @@ static void *ds_realloc(void *ptr, unsigned int old_sz, unsigned int new_sz) {
         (da)->count += new_items_count;                                        \
     } while (0)
 
+#ifndef DSHDEF
+#ifdef DSH_STATIC
+#define DSHDEF static
+#else
+#define DSHDEF extern
+#endif
+#endif
+
 typedef struct ds_priority_queue ds_priority_queue;
 
-void ds_priority_queue_init(ds_priority_queue *pq,
+DSHDEF void ds_priority_queue_init(ds_priority_queue *pq,
                             int (*compare)(const void *, const void *));
-int ds_priority_queue_insert(ds_priority_queue *pq, void *item);
-int ds_priority_queue_pull(ds_priority_queue *pq, void **item);
-int ds_priority_queue_peek(ds_priority_queue *pq, void **item);
-int ds_priority_queue_empty(ds_priority_queue *pq);
-void ds_priority_queue_free(ds_priority_queue *pq);
+DSHDEF int ds_priority_queue_insert(ds_priority_queue *pq, void *item);
+DSHDEF int ds_priority_queue_pull(ds_priority_queue *pq, void **item);
+DSHDEF int ds_priority_queue_peek(ds_priority_queue *pq, void **item);
+DSHDEF int ds_priority_queue_empty(ds_priority_queue *pq);
+DSHDEF void ds_priority_queue_free(ds_priority_queue *pq);
 
 typedef struct ds_string_builder ds_string_builder;
 
-void ds_string_builder_init(ds_string_builder *sb);
-int ds_string_builder_append(ds_string_builder *sb, const char *str);
-int ds_string_builder_build(ds_string_builder *sb, char **str);
-void ds_string_builder_free(ds_string_builder *sb);
+DSHDEF void ds_string_builder_init(ds_string_builder *sb);
+DSHDEF int ds_string_builder_append(ds_string_builder *sb, const char *str);
+DSHDEF int ds_string_builder_build(ds_string_builder *sb, char **str);
+DSHDEF void ds_string_builder_free(ds_string_builder *sb);
 
 typedef struct ds_string_slice ds_string_slice;
 
-void ds_string_slice_init(ds_string_slice *ss, char *str, unsigned int len);
-int ds_string_slice_tokenize(ds_string_slice *ss, char delimiter,
+DSHDEF void ds_string_slice_init(ds_string_slice *ss, char *str, unsigned int len);
+DSHDEF int ds_string_slice_tokenize(ds_string_slice *ss, char delimiter,
                              ds_string_slice *token);
-int ds_string_slice_to_owned(ds_string_slice *ss, char **str);
-void ds_string_slice_free(ds_string_slice *ss);
+DSHDEF int ds_string_slice_to_owned(ds_string_slice *ss, char **str);
+DSHDEF void ds_string_slice_free(ds_string_slice *ss);
 
 #endif // DS_H
 
@@ -248,7 +256,7 @@ typedef struct ds_priority_queue {
 } ds_priority_queue;
 
 // Initialize the priority queue
-void ds_priority_queue_init(ds_priority_queue *pq,
+DSHDEF void ds_priority_queue_init(ds_priority_queue *pq,
                             int (*compare)(const void *, const void *)) {
     pq->items = NULL;
     pq->count = 0;
@@ -259,7 +267,7 @@ void ds_priority_queue_init(ds_priority_queue *pq,
 // Insert an item into the priority queue
 //
 // Returns 0 if the item was inserted successfully.
-int ds_priority_queue_insert(ds_priority_queue *pq, void *item) {
+DSHDEF int ds_priority_queue_insert(ds_priority_queue *pq, void *item) {
     ds_da_append(pq, item);
 
     int index = pq->count - 1;
@@ -281,7 +289,7 @@ int ds_priority_queue_insert(ds_priority_queue *pq, void *item) {
 //
 // Returns 0 if an item was pulled successfully, 1 if the priority queue is
 // empty.
-int ds_priority_queue_pull(ds_priority_queue *pq, void **item) {
+DSHDEF int ds_priority_queue_pull(ds_priority_queue *pq, void **item) {
     int result = 0;
 
     if (pq->count == 0) {
@@ -324,7 +332,7 @@ defer:
 //
 // Returns 0 if an item was peeked successfully, 1 if the priority queue is
 // empty.
-int ds_priority_queue_peek(ds_priority_queue *pq, void **item) {
+DSHDEF int ds_priority_queue_peek(ds_priority_queue *pq, void **item) {
     int result = 0;
 
     if (pq->count == 0) {
@@ -340,10 +348,10 @@ defer:
 }
 
 // Check if the priority queue is empty
-int ds_priority_queue_empty(ds_priority_queue *pq) { return pq->count == 0; }
+DSHDEF int ds_priority_queue_empty(ds_priority_queue *pq) { return pq->count == 0; }
 
 // Free the priority queue
-void ds_priority_queue_free(ds_priority_queue *pq) {
+DSHDEF void ds_priority_queue_free(ds_priority_queue *pq) {
     DS_FREE(pq->items);
     pq->items = NULL;
     pq->count = 0;
@@ -367,7 +375,7 @@ typedef struct ds_string_builder {
 } ds_string_builder;
 
 // Initialize the string builder
-void ds_string_builder_init(ds_string_builder *sb) {
+DSHDEF void ds_string_builder_init(ds_string_builder *sb) {
     sb->items = NULL;
     sb->count = 0;
     sb->capacity = 0;
@@ -376,7 +384,7 @@ void ds_string_builder_init(ds_string_builder *sb) {
 // Append a formatted string to the string builder
 //
 // Returns 0 if the string was appended successfully.
-int ds_string_builder_append(ds_string_builder *sb, const char *str) {
+DSHDEF int ds_string_builder_append(ds_string_builder *sb, const char *str) {
     unsigned int str_len = strlen(str);
     ds_da_append_many(sb, str, str_len);
     return 0;
@@ -386,7 +394,7 @@ int ds_string_builder_append(ds_string_builder *sb, const char *str) {
 //
 // Returns 0 if the string was built successfully, 1 if the string could not be
 // allocated.
-int ds_string_builder_build(ds_string_builder *sb, char **str) {
+DSHDEF int ds_string_builder_build(ds_string_builder *sb, char **str) {
     int result = 0;
 
     *str = DS_MALLOC(sb->count + 1);
@@ -403,7 +411,7 @@ defer:
 }
 
 // Free the string builder
-void ds_string_builder_free(ds_string_builder *sb) {
+DSHDEF void ds_string_builder_free(ds_string_builder *sb) {
     if (sb->items != NULL) {
         DS_FREE(sb->items);
     }
@@ -427,7 +435,7 @@ typedef struct ds_string_slice {
 } ds_string_slice;
 
 // Initialize the string slice
-void ds_string_slice_init(ds_string_slice *ss, char *str, unsigned int len) {
+DSHDEF void ds_string_slice_init(ds_string_slice *ss, char *str, unsigned int len) {
     ss->str = str;
     ss->len = len;
 }
@@ -435,7 +443,7 @@ void ds_string_slice_init(ds_string_slice *ss, char *str, unsigned int len) {
 // Tokenize the string slice by a delimiter
 //
 // Returns 0 if a token was found, 1 if the string slice is empty.
-int ds_string_slice_tokenize(ds_string_slice *ss, char delimiter,
+DSHDEF int ds_string_slice_tokenize(ds_string_slice *ss, char delimiter,
                              ds_string_slice *token) {
     int result = 0;
 
@@ -467,7 +475,7 @@ defer:
 //
 // Returns 0 if the string was converted successfully, 1 if the string could not
 // be allocated.
-int ds_string_slice_to_owned(ds_string_slice *ss, char **str) {
+DSHDEF int ds_string_slice_to_owned(ds_string_slice *ss, char **str) {
     int result = 0;
 
     *str = DS_MALLOC(ss->len + 1);
@@ -484,7 +492,7 @@ defer:
 }
 
 // Free the string slice
-void ds_string_slice_free(ds_string_slice *ss) {
+DSHDEF void ds_string_slice_free(ds_string_slice *ss) {
     ss->str = NULL;
     ss->len = 0;
 }
