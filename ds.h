@@ -956,12 +956,26 @@ DSHDEF int ds_hash_table_insert(ds_hash_table *ht, void *key, void *value) {
     unsigned int index = ht->hash(key) % ht->capacity;
 
     ds_dynamic_array *keys = ht->keys + index;
+    ds_dynamic_array *values = ht->values + index;
+
+    for (unsigned int i = 0; i < keys->count; i++) {
+        void *k = NULL;
+        ds_dynamic_array_get_ref(keys, i, &k);
+
+        if (ht->compare(k, key) == 0) {
+            void *v = NULL;
+            ds_dynamic_array_get_ref(values, i, &v);
+
+            DS_MEMCPY(v, value, ht->value_size);
+            return_defer(0);
+        }
+    }
+
     if (ds_dynamic_array_append(keys, key) != 0) {
         DS_LOG_ERROR("Failed to append key to hash table");
         return_defer(1);
     }
 
-    ds_dynamic_array *values = ht->values + index;
     if (ds_dynamic_array_append(values, value) != 0) {
         DS_LOG_ERROR("Failed to append value to hash table");
         return_defer(1);

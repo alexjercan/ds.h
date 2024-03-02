@@ -22,24 +22,27 @@ int main() {
     ds_hash_table ht;
     ds_hash_table_init(&ht, sizeof(char *), sizeof(int), 100, hash, compare);
 
-    char *key = "keyaaaaaaaa";
-    int value = 42;
-    ds_hash_table_insert(&ht, &key, &value);
+    char *key1 = "key";
+    int value1 = 42;
+    ds_hash_table_insert(&ht, &key1, &value1);
 
-    for (int i = 0; i < ht.capacity; i++) {
-        for (int j = 0; j < ht.keys[i].count; j++) {
-            char *k;
-            ds_dynamic_array_get(&ht.keys[i], j, &k);
+    char *key2 = "key";
+    int value2 = 69;
+    ds_hash_table_insert(&ht, &key2, &value2);
 
-            int v;
-            ds_dynamic_array_get(&ht.values[i], j, &v);
+    char *key3 = "key2";
+    int value3 = 420;
+    ds_hash_table_insert(&ht, &key3, &value3);
 
-            printf("index: %d, key: %s, value: %d\n", i, k, v);
-        }
+    char *find_key = "key";
+    int value = 0;
+    if (ds_hash_table_get(&ht, &find_key, &value) != 0) {
+        printf("key not found\n");
+    } else {
+        printf("value: %d\n", value);
     }
 
-    char *find_key = "keyaaaaaaaa";
-    value = 0;
+    find_key = "key2";
     if (ds_hash_table_get(&ht, &find_key, &value) != 0) {
         printf("key not found\n");
     } else {
