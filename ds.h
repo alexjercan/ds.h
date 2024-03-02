@@ -300,8 +300,8 @@ typedef struct ds_dynamic_array {
 } ds_dynamic_array;
 
 DSHDEF void ds_dynamic_array_init(ds_dynamic_array *da, unsigned int item_size);
-DSHDEF int ds_dynamic_array_append(ds_dynamic_array *da, void *item);
-DSHDEF int ds_dynamic_array_append_many(ds_dynamic_array *da, void **new_items,
+DSHDEF int ds_dynamic_array_append(ds_dynamic_array *da, const void *item);
+DSHDEF int ds_dynamic_array_append_many(ds_dynamic_array *da, const void **new_items,
                                         unsigned int new_items_count);
 DSHDEF int ds_dynamic_array_get(ds_dynamic_array *da, unsigned int index,
                                 void *item);
@@ -343,10 +343,11 @@ DSHDEF int ds_hash_table_init(ds_hash_table *ht, unsigned int key_size,
                               unsigned int value_size, unsigned int capacity,
                               unsigned int (*hash)(const void *),
                               int (*compare)(const void *, const void *));
-DSHDEF int ds_hash_table_insert(ds_hash_table *ht, void *key, void *value);
-DSHDEF int ds_hash_table_get(ds_hash_table *ht, void *key, void *value);
-DSHDEF int ds_hash_table_get_ref(ds_hash_table *ht, void *key, void **value);
-DSHDEF int ds_hash_table_remove(ds_hash_table *ht, void *key);
+DSHDEF int ds_hash_table_insert(ds_hash_table *ht, const void *key, void *value);
+DSHDEF int ds_hash_table_has(ds_hash_table *ht, const void *key);
+DSHDEF int ds_hash_table_get(ds_hash_table *ht, const void *key, void *value);
+DSHDEF int ds_hash_table_get_ref(ds_hash_table *ht, const void *key, void **value);
+DSHDEF int ds_hash_table_remove(ds_hash_table *ht, const void *key);
 DSHDEF void ds_hash_table_free(ds_hash_table *ht);
 
 #endif // DS_H
@@ -626,7 +627,7 @@ DSHDEF void ds_dynamic_array_init(ds_dynamic_array *da,
 //
 // Returns 0 if the item was appended successfully, 1 if the array could not be
 // reallocated.
-DSHDEF int ds_dynamic_array_append(ds_dynamic_array *da, void *item) {
+DSHDEF int ds_dynamic_array_append(ds_dynamic_array *da, const void *item) {
     int result = 0;
 
     if (da->count >= da->capacity) {
@@ -658,7 +659,7 @@ defer:
 //
 // Returns 0 if the items were appended successfully, 1 if the array could not
 // be reallocated.
-DSHDEF int ds_dynamic_array_append_many(ds_dynamic_array *da, void **new_items,
+DSHDEF int ds_dynamic_array_append_many(ds_dynamic_array *da, const void **new_items,
                                         unsigned int new_items_count) {
     int result = 0;
 
@@ -950,7 +951,7 @@ defer:
     return result;
 }
 
-DSHDEF int ds_hash_table_insert(ds_hash_table *ht, void *key, void *value) {
+DSHDEF int ds_hash_table_insert(ds_hash_table *ht, const void *key, void *value) {
     int result = 0;
 
     unsigned int index = ht->hash(key) % ht->capacity;
@@ -985,7 +986,24 @@ defer:
     return result;
 }
 
-DSHDEF int ds_hash_table_get(ds_hash_table *ht, void *key, void *value) {
+DSHDEF int ds_hash_table_has(ds_hash_table *ht, const void *key) {
+    unsigned int index = ht->hash(key) % ht->capacity;
+
+    ds_dynamic_array *keys = ht->keys + index;
+
+    for (unsigned int i = 0; i < keys->count; i++) {
+        void *k = NULL;
+        ds_dynamic_array_get_ref(keys, i, &k);
+
+        if (ht->compare(k, key) == 0) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+DSHDEF int ds_hash_table_get(ds_hash_table *ht, const void *key, void *value) {
     int result = 0;
 
     unsigned int index = ht->hash(key) % ht->capacity;
@@ -1009,7 +1027,7 @@ defer:
     return result;
 }
 
-DSHDEF int ds_hash_table_get_ref(ds_hash_table *ht, void *key, void **value) {
+DSHDEF int ds_hash_table_get_ref(ds_hash_table *ht, const void *key, void **value) {
     int result = 0;
 
     unsigned int index = ht->hash(key) % ht->capacity;
@@ -1033,7 +1051,7 @@ defer:
     return result;
 }
 
-DSHDEF int ds_hash_table_remove(ds_hash_table *ht, void *key) {
+DSHDEF int ds_hash_table_remove(ds_hash_table *ht, const void *key) {
     DS_LOG_ERROR("Not implemented");
     return 1;
 }
