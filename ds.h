@@ -55,6 +55,7 @@
 #define DS_REALLOC(ptr, old_sz, new_sz) realloc(ptr, new_sz)
 #define DS_FREE(ptr) free(ptr)
 #define DS_MEMCPY(dst, src, sz) memcpy(dst, src, sz)
+#define DS_MEMCMP(ptr1, ptr2, sz) memcmp(ptr1, ptr2, sz)
 
 #ifndef DS_EXIT
 #define DS_EXIT(code) exit(code)
@@ -77,6 +78,20 @@
             ((char *)dst)[i] = ((char *)src)[i];                               \
         }                                                                      \
     } while (0)
+#endif
+
+#ifndef DS_MEMCMP
+#define DS_MEMCMP(ptr1, ptr2, sz)                                              \
+    ({                                                                         \
+        int result = 0;                                                        \
+        for (unsigned int i = 0; i < sz; i++) {                                \
+            if (((char *)ptr1)[i] != ((char *)ptr2)[i]) {                      \
+                result = ((char *)ptr1)[i] - ((char *)ptr2)[i];                \
+                break;                                                         \
+            }                                                                  \
+        }                                                                      \
+        result;                                                                \
+    })
 #endif
 
 #ifndef DS_REALLOC
@@ -247,7 +262,8 @@ typedef struct ds_string_builder {
 
 DSHDEF void ds_string_builder_init(ds_string_builder *sb);
 DSHDEF int ds_string_builder_append(ds_string_builder *sb, const char *str);
-DSHDEF int ds_string_builder_appendn(ds_string_builder *sb, const char *str, unsigned int len);
+DSHDEF int ds_string_builder_appendn(ds_string_builder *sb, const char *str,
+                                     unsigned int len);
 DSHDEF int ds_string_builder_appendc(ds_string_builder *sb, char chr);
 DSHDEF int ds_string_builder_build(ds_string_builder *sb, char **str);
 DSHDEF void ds_string_builder_free(ds_string_builder *sb);
@@ -312,6 +328,27 @@ DSHDEF int ds_linked_list_pop_back(ds_linked_list *ll, void *item);
 DSHDEF int ds_linked_list_pop_front(ds_linked_list *ll, void *item);
 DSHDEF void ds_linked_list_free(ds_linked_list *ll);
 
+// HASH TABLE
+typedef struct ds_hash_table {
+        ds_dynamic_array *keys;
+        ds_dynamic_array *values;
+        unsigned int key_size;
+        unsigned int value_size;
+        unsigned int capacity;
+        unsigned int (*hash)(const void *);
+        int (*compare)(const void *, const void *);
+} ds_hash_table;
+
+DSHDEF int ds_hash_table_init(ds_hash_table *ht, unsigned int key_size,
+                              unsigned int value_size, unsigned int capacity,
+                              unsigned int (*hash)(const void *),
+                              int (*compare)(const void *, const void *));
+DSHDEF int ds_hash_table_insert(ds_hash_table *ht, void *key, void *value);
+DSHDEF int ds_hash_table_get(ds_hash_table *ht, void *key, void *value);
+DSHDEF int ds_hash_table_get_ref(ds_hash_table *ht, void *key, void **value);
+DSHDEF int ds_hash_table_remove(ds_hash_table *ht, void *key);
+DSHDEF void ds_hash_table_free(ds_hash_table *ht);
+
 #endif // DS_H
 
 #ifdef DS_IMPLEMENTATION
@@ -320,7 +357,12 @@ DSHDEF void ds_linked_list_free(ds_linked_list *ll);
 #define DS_SS_IMPLEMENTATION
 #define DS_DA_IMPLEMENTATION
 #define DS_LL_IMPLEMENTATION
+#define DS_HT_IMPLEMENTATION
 #endif // DS_IMPLEMENTATION
+
+#ifdef DS_HT_IMPLEMENTATION
+#define DS_DA_IMPLEMENTATION
+#endif // DS_HT_IMPLEMENTATION
 
 #ifdef DS_PQ_IMPLEMENTATION
 
@@ -444,7 +486,8 @@ DSHDEF void ds_string_builder_init(ds_string_builder *sb) {
 // Append a formatted string to the string builder
 //
 // Returns 0 if the string was appended successfully.
-DSHDEF int ds_string_builder_appendn(ds_string_builder *sb, const char *str, unsigned int len) {
+DSHDEF int ds_string_builder_appendn(ds_string_builder *sb, const char *str,
+                                     unsigned int len) {
     ds_da_append_many(sb, str, len);
     return 0;
 }
@@ -862,3 +905,132 @@ DSHDEF void ds_linked_list_free(ds_linked_list *ll) {
 }
 
 #endif // DS_ST_IMPLEMENTATION
+
+#ifdef DS_HT_IMPLEMENTATION
+
+DSHDEF int ds_hash_table_init(ds_hash_table *ht, unsigned int key_size,
+                              unsigned int value_size, unsigned int capacity,
+                              unsigned int (*hash)(const void *),
+                              int (*compare)(const void *, const void *)) {
+    int result = 0;
+
+    ht->keys = DS_MALLOC(capacity * sizeof(ds_dynamic_array));
+    if (ht->keys == NULL) {
+        DS_LOG_ERROR("Failed to allocate hash table keys");
+        return_defer(1);
+    }
+
+    ht->values = DS_MALLOC(capacity * sizeof(ds_dynamic_array));
+    if (ht->values == NULL) {
+        DS_LOG_ERROR("Failed to allocate hash table values");
+        return_defer(1);
+    }
+
+    for (unsigned int i = 0; i < capacity; i++) {
+        ds_dynamic_array_init(ht->keys + i, key_size);
+        ds_dynamic_array_init(ht->values + i, value_size);
+    }
+
+    ht->key_size = key_size;
+    ht->value_size = value_size;
+    ht->capacity = capacity;
+
+    ht->hash = hash;
+    ht->compare = compare;
+
+defer:
+    if (result != 0) {
+        if (ht->keys != NULL) {
+            DS_FREE(ht->keys);
+        }
+        if (ht->values != NULL) {
+            DS_FREE(ht->values);
+        }
+    }
+    return result;
+}
+
+DSHDEF int ds_hash_table_insert(ds_hash_table *ht, void *key, void *value) {
+    int result = 0;
+
+    unsigned int index = ht->hash(key) % ht->capacity;
+
+    ds_dynamic_array *keys = ht->keys + index;
+    if (ds_dynamic_array_append(keys, key) != 0) {
+        DS_LOG_ERROR("Failed to append key to hash table");
+        return_defer(1);
+    }
+
+    ds_dynamic_array *values = ht->values + index;
+    if (ds_dynamic_array_append(values, value) != 0) {
+        DS_LOG_ERROR("Failed to append value to hash table");
+        return_defer(1);
+    }
+
+defer:
+    return result;
+}
+
+DSHDEF int ds_hash_table_get(ds_hash_table *ht, void *key, void *value) {
+    int result = 0;
+
+    unsigned int index = ht->hash(key) % ht->capacity;
+
+    ds_dynamic_array *keys = ht->keys + index;
+    ds_dynamic_array *values = ht->values + index;
+
+    for (unsigned int i = 0; i < keys->count; i++) {
+        void *k = NULL;
+        ds_dynamic_array_get_ref(keys, i, &k);
+
+        if (ht->compare(k, key) == 0) {
+            ds_dynamic_array_get(values, i, value);
+            return_defer(0);
+        }
+    }
+
+    return_defer(1);
+
+defer:
+    return result;
+}
+
+DSHDEF int ds_hash_table_get_ref(ds_hash_table *ht, void *key, void **value) {
+    int result = 0;
+
+    unsigned int index = ht->hash(key) % ht->capacity;
+
+    ds_dynamic_array *keys = ht->keys + index;
+    ds_dynamic_array *values = ht->values + index;
+
+    for (unsigned int i = 0; i < keys->count; i++) {
+        void *k = NULL;
+        ds_dynamic_array_get_ref(keys, i, &k);
+
+        if (ht->compare(k, key) == 0) {
+            ds_dynamic_array_get_ref(values, i, value);
+            return_defer(0);
+        }
+    }
+
+    return_defer(1);
+
+defer:
+    return result;
+}
+
+DSHDEF int ds_hash_table_remove(ds_hash_table *ht, void *key) {
+    DS_LOG_ERROR("Not implemented");
+    return 1;
+}
+
+DSHDEF void ds_hash_table_free(ds_hash_table *ht) {
+    for (unsigned int i = 0; i < ht->capacity; i++) {
+        ds_dynamic_array_free(ht->keys + i);
+        ds_dynamic_array_free(ht->values + i);
+    }
+    DS_FREE(ht->keys);
+    DS_FREE(ht->values);
+}
+
+#endif // DS_HT_IMPLEMENTATION
