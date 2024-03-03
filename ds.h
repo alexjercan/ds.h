@@ -301,19 +301,26 @@ typedef struct ds_dynamic_array {
 
 DSHDEF void ds_dynamic_array_init(ds_dynamic_array *da, unsigned int item_size);
 DSHDEF int ds_dynamic_array_append(ds_dynamic_array *da, const void *item);
-DSHDEF int ds_dynamic_array_append_many(ds_dynamic_array *da, const void **new_items,
+DSHDEF int ds_dynamic_array_pop(ds_dynamic_array *da, const void **item);
+DSHDEF int ds_dynamic_array_append_many(ds_dynamic_array *da, void **new_items,
                                         unsigned int new_items_count);
 DSHDEF int ds_dynamic_array_get(ds_dynamic_array *da, unsigned int index,
                                 void *item);
 DSHDEF void ds_dynamic_array_get_ref(ds_dynamic_array *da, unsigned int index,
                                      void **item);
+DSHDEF void ds_dynamic_array_copy(ds_dynamic_array *da, ds_dynamic_array *copy);
+DSHDEF void ds_dynamic_array_reverse(ds_dynamic_array *da);
 DSHDEF void ds_dynamic_array_free(ds_dynamic_array *da);
 
 // (DOUBLY) LINKED LIST
 //
 // The linked list is a simple list that can be used to push and pop items from
 // the front and back of the list.
-typedef struct ds_linked_list_node ds_linked_list_node;
+typedef struct ds_linked_list_node {
+        void *item;
+        struct ds_linked_list_node *prev;
+        struct ds_linked_list_node *next;
+} ds_linked_list_node;
 
 typedef struct ds_linked_list {
         unsigned int item_size;
@@ -343,10 +350,13 @@ DSHDEF int ds_hash_table_init(ds_hash_table *ht, unsigned int key_size,
                               unsigned int value_size, unsigned int capacity,
                               unsigned int (*hash)(const void *),
                               int (*compare)(const void *, const void *));
-DSHDEF int ds_hash_table_insert(ds_hash_table *ht, const void *key, void *value);
+DSHDEF int ds_hash_table_insert(ds_hash_table *ht, const void *key,
+                                void *value);
 DSHDEF int ds_hash_table_has(ds_hash_table *ht, const void *key);
 DSHDEF int ds_hash_table_get(ds_hash_table *ht, const void *key, void *value);
-DSHDEF int ds_hash_table_get_ref(ds_hash_table *ht, const void *key, void **value);
+DSHDEF int ds_hash_table_get_ref(ds_hash_table *ht, const void *key,
+                                 void **value);
+DSHDEF unsigned int ds_hash_table_count(ds_hash_table *ht);
 DSHDEF int ds_hash_table_remove(ds_hash_table *ht, const void *key);
 DSHDEF void ds_hash_table_free(ds_hash_table *ht);
 
@@ -655,11 +665,33 @@ defer:
     return result;
 }
 
+// Pop an item from the dynamic array
+//
+// Returns 0 if the item was popped successfully, 1 if the array is empty.
+// If the item is NULL, then we just pop the item without returning it.
+DSHDEF int ds_dynamic_array_pop(ds_dynamic_array *da, const void **item) {
+    int result = 0;
+
+    if (da->count == 0) {
+        DS_LOG_ERROR("Dynamic array is empty");
+        *item = NULL;
+        return_defer(1);
+    }
+
+    if (item != NULL) {
+        *item = (char *)da->items + (da->count - 1) * da->item_size;
+    }
+    da->count--;
+
+defer:
+    return result;
+}
+
 // Append multiple items to the dynamic array
 //
 // Returns 0 if the items were appended successfully, 1 if the array could not
 // be reallocated.
-DSHDEF int ds_dynamic_array_append_many(ds_dynamic_array *da, const void **new_items,
+DSHDEF int ds_dynamic_array_append_many(ds_dynamic_array *da, void **new_items,
                                         unsigned int new_items_count) {
     int result = 0;
 
@@ -711,6 +743,28 @@ DSHDEF void ds_dynamic_array_get_ref(ds_dynamic_array *da, unsigned int index,
     *item = (char *)da->items + index * da->item_size;
 }
 
+DSHDEF void ds_dynamic_array_copy(ds_dynamic_array *da,
+                                  ds_dynamic_array *copy) {
+    copy->items = DS_MALLOC(da->capacity * da->item_size);
+    copy->item_size = da->item_size;
+    copy->count = da->count;
+    copy->capacity = da->capacity;
+
+    DS_MEMCPY(copy->items, da->items, da->count * da->item_size);
+}
+
+DSHDEF void ds_dynamic_array_reverse(ds_dynamic_array *da) {
+    for (unsigned int i = 0; i < da->count / 2; i++) {
+        unsigned int j = da->count - i - 1;
+        void *temp = DS_MALLOC(da->item_size);
+        DS_MEMCPY(temp, (char *)da->items + i * da->item_size, da->item_size);
+        DS_MEMCPY((char *)da->items + i * da->item_size,
+                  (char *)da->items + j * da->item_size, da->item_size);
+        DS_MEMCPY((char *)da->items + j * da->item_size, temp, da->item_size);
+        DS_FREE(temp);
+    }
+}
+
 DSHDEF void ds_dynamic_array_free(ds_dynamic_array *da) {
     if (da->items != NULL) {
         DS_FREE(da->items);
@@ -723,12 +777,6 @@ DSHDEF void ds_dynamic_array_free(ds_dynamic_array *da) {
 #endif // DS_DA_IMPLEMENTATION
 
 #ifdef DS_LL_IMPLEMENTATION
-
-typedef struct ds_linked_list_node {
-        void *item;
-        struct ds_linked_list_node *prev;
-        struct ds_linked_list_node *next;
-} ds_linked_list_node;
 
 // Initialize the linked list
 //
@@ -951,7 +999,8 @@ defer:
     return result;
 }
 
-DSHDEF int ds_hash_table_insert(ds_hash_table *ht, const void *key, void *value) {
+DSHDEF int ds_hash_table_insert(ds_hash_table *ht, const void *key,
+                                void *value) {
     int result = 0;
 
     unsigned int index = ht->hash(key) % ht->capacity;
@@ -1027,7 +1076,8 @@ defer:
     return result;
 }
 
-DSHDEF int ds_hash_table_get_ref(ds_hash_table *ht, const void *key, void **value) {
+DSHDEF int ds_hash_table_get_ref(ds_hash_table *ht, const void *key,
+                                 void **value) {
     int result = 0;
 
     unsigned int index = ht->hash(key) % ht->capacity;
@@ -1049,6 +1099,14 @@ DSHDEF int ds_hash_table_get_ref(ds_hash_table *ht, const void *key, void **valu
 
 defer:
     return result;
+}
+
+DSHDEF unsigned int ds_hash_table_count(ds_hash_table *ht) {
+    unsigned int count = 0;
+    for (unsigned int i = 0; i < ht->capacity; i++) {
+        count += (ht->keys + i)->count;
+    }
+    return count;
 }
 
 DSHDEF int ds_hash_table_remove(ds_hash_table *ht, const void *key) {
