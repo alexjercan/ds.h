@@ -335,6 +335,7 @@ DSHDEF int ds_linked_list_push_back(ds_linked_list *ll, void *item);
 DSHDEF int ds_linked_list_push_front(ds_linked_list *ll, void *item);
 DSHDEF int ds_linked_list_pop_back(ds_linked_list *ll, void *item);
 DSHDEF int ds_linked_list_pop_front(ds_linked_list *ll, void *item);
+DSHDEF int ds_linked_list_empty(ds_linked_list *ll);
 DSHDEF void ds_linked_list_free(ds_linked_list *ll);
 
 // HASH TABLE
@@ -944,6 +945,13 @@ defer:
         DS_FREE(node);
     }
     return result;
+}
+
+// Check if the linked list is empty
+//
+// Returns 1 if the list is empty, 0 if the list is not empty.
+DSHDEF int ds_linked_list_empty(ds_linked_list *ll) {
+    return ll->head == NULL;
 }
 
 DSHDEF void ds_linked_list_free(ds_linked_list *ll) {
