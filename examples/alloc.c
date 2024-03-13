@@ -162,7 +162,9 @@ int main() {
     allocator_t allocator;
     allocator_init(&allocator, data, ALLOC_SIZE);
 
-    void *ptr = allocator_alloc(&allocator, 1024);
+    void *ptr = allocator_alloc(&allocator, 128);
+    ptr = allocator_alloc(&allocator, 128);
+    ptr = allocator_alloc(&allocator, 128);
 
     allocator_dump(&allocator);
 
