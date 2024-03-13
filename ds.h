@@ -7,6 +7,8 @@
 // use, and it is intended to be used in small to medium-sized projects.
 //
 // Options:
+// - DS_CORE_IMPLEMENTATION: Define this macro in one source file to include the
+// implementation of all the core utilities
 // - DS_IMPLEMENTATION: Define this macro in one source file to include the
 // implementation of all the data structures and utilities
 // - DS_PQ_IMPLEMENTATION: Define this macro in one source file to include the
@@ -41,184 +43,18 @@
 //
 // Options:
 // - DS_NO_STDIO: Disables the use of the standard input/output streams
-// - DS_QUIET: Disables the use of the standard error stream
-// - DS_NO_LOG_ERROR: Disables the use of the DS_LOG_ERROR macro
-// - DS_NO_LOG_INFO: Disables the use of the DS_LOG_INFO macro
-// - DS_NO_TERMINAL_COLORS: Disables the use of terminal colors in the output
+// - DS_LOG_LEVEL: Sets the logging level to one of the following values:
+//  - DS_LOG_LEVEL_DEBUG: Print debug, info, warn and error messages
+//  - DS_LOG_LEVEL_INFO: Print info, warn and error messages
+//  - DS_LOG_LEVEL_WARN: Print warn and error messages
+//  - DS_LOG_LEVEL_ERROR: Print error messages
+//  - DS_LOG_LEVEL_NONE: Print no messages
+// The default logging level is DS_LOG_LEVEL_DEBUG
+// - DS_NO_TERMINAL_COLORS: Disables the use of terminal colors in the log
+// messages
 
 #ifndef DS_H
 #define DS_H
-
-#ifndef DS_NO_STDLIB
-#include <stdlib.h>
-#include <string.h>
-
-#define DS_MALLOC(sz) malloc(sz)
-#define DS_REALLOC(ptr, old_sz, new_sz) realloc(ptr, new_sz)
-#define DS_FREE(ptr) free(ptr)
-#define DS_MEMCPY(dst, src, sz) memcpy(dst, src, sz)
-#define DS_MEMCMP(ptr1, ptr2, sz) memcmp(ptr1, ptr2, sz)
-
-#ifndef DS_EXIT
-#define DS_EXIT(code) exit(code)
-#endif
-#else // DS_NO_STDLIB
-#if defined(DS_MALLOC) && defined(DS_FREE) && defined(DS_EXIT)
-// ok
-#else
-#error "Must define DS_MALLOC, DS_FREE and DS_EXIT when DS_NO_STDLIB is defined"
-#endif
-
-#ifndef NULL
-#define NULL 0
-#endif
-
-#ifndef DS_MEMCPY
-#define DS_MEMCPY(dst, src, sz)                                                \
-    do {                                                                       \
-        for (unsigned int i = 0; i < sz; i++) {                                \
-            ((char *)dst)[i] = ((char *)src)[i];                               \
-        }                                                                      \
-    } while (0)
-#endif
-
-#ifndef DS_MEMCMP
-#define DS_MEMCMP(ptr1, ptr2, sz)                                              \
-    ({                                                                         \
-        int result = 0;                                                        \
-        for (unsigned int i = 0; i < sz; i++) {                                \
-            if (((char *)ptr1)[i] != ((char *)ptr2)[i]) {                      \
-                result = ((char *)ptr1)[i] - ((char *)ptr2)[i];                \
-                break;                                                         \
-            }                                                                  \
-        }                                                                      \
-        result;                                                                \
-    })
-#endif
-
-#ifndef DS_REALLOC
-static void *ds_realloc(void *ptr, unsigned int old_sz, unsigned int new_sz) {
-    void *new_ptr = DS_MALLOC(new_sz);
-    if (new_ptr == NULL) {
-        DS_FREE(ptr);
-        return NULL;
-    }
-    DS_MEMCPY(new_ptr, ptr, old_sz < new_sz ? old_sz : new_sz);
-    DS_FREE(ptr);
-    return new_ptr;
-}
-#define DS_REALLOC(ptr, old_sz, new_sz) ds_realloc(ptr, old_sz, new_sz)
-#endif
-#endif // DS_NO_STDLIB
-
-#ifndef DS_NO_STDIO
-#include <stdio.h>
-#endif
-
-#ifdef DS_QUIET
-#define DS_NO_LOG_ERROR
-#define DS_NO_LOG_INFO
-#endif
-
-#ifdef DS_NO_TERMINAL_COLORS
-#define DS_TERMINAL_RED ""
-#define DS_TERMINAL_BLUE ""
-#define DS_TERMINAL_RESET ""
-#else
-#define DS_TERMINAL_RED "\033[1;31m"
-#define DS_TERMINAL_BLUE "\033[1;34m"
-#define DS_TERMINAL_RESET "\033[0m"
-#endif
-
-#if defined(DS_NO_STDIO) || defined(DS_NO_LOG_ERROR)
-#define DS_LOG_ERROR(format, ...)
-#else
-#define DS_LOG_ERROR(format, ...)                                              \
-    fprintf(stderr,                                                            \
-            DS_TERMINAL_RED "ERROR" DS_TERMINAL_RESET ": %s:%d: " format "\n", \
-            __FILE__, __LINE__, ##__VA_ARGS__)
-#endif
-
-#if defined(DS_NO_STDIO) || defined(DS_NO_LOG_INFO)
-#define DS_LOG_INFO(format, ...)
-#else
-#define DS_LOG_INFO(format, ...)                                               \
-    fprintf(stdout,                                                            \
-            DS_TERMINAL_BLUE "INFO" DS_TERMINAL_RESET ": %s:%d: " format "\n", \
-            __FILE__, __LINE__, ##__VA_ARGS__)
-#endif
-
-#define DS_PANIC(format, ...)                                                  \
-    do {                                                                       \
-        DS_LOG_ERROR(format, ##__VA_ARGS__);                                   \
-        DS_EXIT(1);                                                            \
-    } while (0)
-
-// RETURN DEFER
-//
-// The return_defer macro is a simple way to return a value and jump to a label
-// to execute cleanup code. It is similar to the defer statement in Go.
-
-#ifndef return_defer
-#define return_defer(code)                                                     \
-    do {                                                                       \
-        result = code;                                                         \
-        goto defer;                                                            \
-    } while (0)
-#endif // return_defer
-
-// DYNAMIC ARRAY
-//
-// The dynamic array is a simple array that grows as needed. To use the dynamic
-// array append macro, you need to define a struct with the following fields:
-//  - items: a pointer to the array of items
-//  - count: the number of items in the array
-//  - capacity: the number of items that can be stored in the array
-
-#define DS_DA_INIT_CAPACITY 8192
-#define ds_da_append(da, item)                                                 \
-    do {                                                                       \
-        if ((da)->count >= (da)->capacity) {                                   \
-            unsigned int new_capacity = (da)->capacity * 2;                    \
-            if (new_capacity == 0) {                                           \
-                new_capacity = DS_DA_INIT_CAPACITY;                            \
-            }                                                                  \
-                                                                               \
-            (da)->items =                                                      \
-                DS_REALLOC((da)->items, (da)->capacity * sizeof(*(da)->items), \
-                           new_capacity * sizeof(*(da)->items));               \
-            if ((da)->items == NULL) {                                         \
-                DS_PANIC("Failed to reallocate dynamic array");                \
-            }                                                                  \
-                                                                               \
-            (da)->capacity = new_capacity;                                     \
-        }                                                                      \
-                                                                               \
-        (da)->items[(da)->count++] = (item);                                   \
-    } while (0)
-
-#define ds_da_append_many(da, new_items, new_items_count)                      \
-    do {                                                                       \
-        if ((da)->count + new_items_count > (da)->capacity) {                  \
-            if ((da)->capacity == 0) {                                         \
-                (da)->capacity = DS_DA_INIT_CAPACITY;                          \
-            }                                                                  \
-            while ((da)->count + new_items_count > (da)->capacity) {           \
-                (da)->capacity *= 2;                                           \
-            }                                                                  \
-                                                                               \
-            (da)->items =                                                      \
-                DS_REALLOC((da)->items, (da)->capacity * sizeof(*(da)->items), \
-                           (da)->capacity * sizeof(*(da)->items));             \
-            if ((da)->items == NULL) {                                         \
-                DS_PANIC("Failed to reallocate dynamic array");                \
-            }                                                                  \
-        }                                                                      \
-                                                                               \
-        DS_MEMCPY((da)->items + (da)->count, new_items,                        \
-                  new_items_count * sizeof(*(da)->items));                     \
-        (da)->count += new_items_count;                                        \
-    } while (0)
 
 #ifndef DSHDEF
 #ifdef DSH_STATIC
@@ -383,6 +219,242 @@ DSHDEF void ds_hash_table_free(ds_hash_table *ht);
 #define DS_DA_IMPLEMENTATION
 #endif // DS_HT_IMPLEMENTATION
 
+#if defined(DS_PQ_IMPLEMENTATION) || defined(DS_SB_IMPLEMENTATION) ||          \
+    defined(DS_SS_IMPLEMENTATION) || defined(DS_DA_IMPLEMENTATION) ||          \
+    defined(DS_LL_IMPLEMENTATION) || defined(DS_HT_IMPLEMENTATION)
+#define DS_CORE_IMPLEMENTATION
+#endif
+
+#ifdef DS_CORE_IMPLEMENTATION
+
+// RETURN DEFER
+//
+// The return_defer macro is a simple way to return a value and jump to a label
+// to execute cleanup code. It is similar to the defer statement in Go.
+
+#ifndef return_defer
+#define return_defer(code)                                                     \
+    do {                                                                       \
+        result = code;                                                         \
+        goto defer;                                                            \
+    } while (0)
+#endif // return_defer
+
+#ifndef DS_NO_STDLIB
+#include <stdlib.h>
+#include <string.h>
+#endif
+
+#ifndef NULL
+#define NULL 0
+#endif
+
+#if defined(DS_MEMCPY)
+// ok
+#elif !defined(DS_MEMCPY) && !defined(DS_NO_STDLIB)
+#define DS_MEMCPY(dst, src, sz) memcpy(dst, src, sz)
+#elif defined(DS_NO_STDLIB)
+#define DS_MEMCPY(dst, src, sz)                                                \
+    do {                                                                       \
+        for (unsigned int i = 0; i < sz; i++) {                                \
+            ((char *)dst)[i] = ((char *)src)[i];                               \
+        }                                                                      \
+    } while (0)
+#endif
+
+#if defined(DS_MEMCMP)
+// ok
+#elif !defined(DS_MEMCMP) && !defined(DS_NO_STDLIB)
+#define DS_MEMCMP(ptr1, ptr2, sz) memcmp(ptr1, ptr2, sz)
+#elif defined(DS_NO_STDLIB)
+#define DS_MEMCMP(ptr1, ptr2, sz)                                              \
+    ({                                                                         \
+        int result = 0;                                                        \
+        for (unsigned int i = 0; i < sz; i++) {                                \
+            if (((char *)ptr1)[i] != ((char *)ptr2)[i]) {                      \
+                result = ((char *)ptr1)[i] - ((char *)ptr2)[i];                \
+                break;                                                         \
+            }                                                                  \
+        }                                                                      \
+        result;                                                                \
+    })
+#endif
+
+#if defined(DS_MALLOC) && defined(DS_FREE)
+// ok
+#elif !defined(DS_MALLOC) && !defined(DS_FREE) && !defined(DS_REALLOC) &&      \
+    !defined(DS_NO_STDLIB)
+#define DS_MALLOC(a, sz) malloc(sz)
+#define DS_REALLOC(a, ptr, old_sz, new_sz) realloc(ptr, new_sz)
+#define DS_FREE(a, ptr) free(ptr)
+#elif defined(DS_NO_STDLIB)
+#error "Must define DS_MALLOC and DS_FREE when DS_NO_STDLIB is defined"
+#else
+#error "Must define both DS_MALLOC and DS_FREE, or neither"
+#endif
+
+#ifndef DS_REALLOC
+static void *ds_realloc(void *a, void *ptr, unsigned int old_sz,
+                        unsigned int new_sz) {
+    void *new_ptr = DS_MALLOC(a, new_sz);
+    if (new_ptr == NULL) {
+        DS_FREE(a, ptr);
+        return NULL;
+    }
+    DS_MEMCPY(new_ptr, ptr, old_sz < new_sz ? old_sz : new_sz);
+    DS_FREE(a, ptr);
+    return new_ptr;
+}
+#define DS_REALLOC(a, ptr, old_sz, new_sz) ds_realloc(a, ptr, old_sz, new_sz)
+#endif
+
+#if defined(DS_EXIT)
+// ok
+#elif !defined(DS_EXIT) && !defined(DS_NO_STDLIB)
+#define DS_EXIT(code) exit(code)
+#elif defined(DS_NO_STDLIB)
+#error "Must define DS_EXIT when DS_NO_STDLIB is defined"
+#endif
+
+#ifndef DS_NO_STDIO
+#include <stdio.h>
+#endif
+
+#if defined(DS_NO_STDIO) && !defined(fprintf)
+#define fprintf(stream, format, ...)                                           \
+    do {                                                                       \
+    } while (0)
+#endif
+
+#if defined(DS_NO_STDIO) && !defined(stderr)
+#define stderr NULL
+#endif
+
+#if defined(DS_NO_STDIO) && !defined(stdout)
+#define stdout NULL
+#endif
+
+#define DS_LOG_LEVEL_DEBUG 1
+#define DS_LOG_LEVEL_INFO 10
+#define DS_LOG_LEVEL_WARN 100
+#define DS_LOG_LEVEL_ERROR 1000
+#define DS_LOG_LEVEL_NONE 10000
+
+#ifndef DS_LOG_LEVEL
+#define DS_LOG_LEVEL DS_LOG_LEVEL_DEBUG
+#endif
+
+#ifdef DS_NO_TERMINAL_COLORS
+#define DS_TERMINAL_RED ""
+#define DS_TERMINAL_YELLOW ""
+#define DS_TERMINAL_BLUE ""
+#define DS_TERMINAL_RESET ""
+#else
+#define DS_TERMINAL_RED "\033[1;31m"
+#define DS_TERMINAL_YELLOW "\033[1;33m"
+#define DS_TERMINAL_BLUE "\033[1;34m"
+#define DS_TERMINAL_RESET "\033[0m"
+#endif
+
+#if DS_LOG_LEVEL > DS_LOG_LEVEL_ERROR
+#define DS_LOG_ERROR(format, ...)
+#else
+#define DS_LOG_ERROR(format, ...)                                              \
+    fprintf(stderr,                                                            \
+            DS_TERMINAL_RED "ERROR" DS_TERMINAL_RESET ": %s:%d: " format "\n", \
+            __FILE__, __LINE__, ##__VA_ARGS__)
+#endif
+
+#if DS_LOG_LEVEL > DS_LOG_LEVEL_WARN
+#define DS_LOG_WARN(format, ...)
+#else
+#define DS_LOG_WARN(format, ...)                                               \
+    fprintf(stdout,                                                            \
+            DS_TERMINAL_YELLOW "WARN" DS_TERMINAL_RESET ": %s:%d: " format     \
+                               "\n",                                           \
+            __FILE__, __LINE__, ##__VA_ARGS__)
+#endif
+
+#if DS_LOG_LEVEL > DS_LOG_LEVEL_INFO
+#define DS_LOG_INFO(format, ...)
+#else
+#define DS_LOG_INFO(format, ...)                                               \
+    fprintf(stderr,                                                            \
+            DS_TERMINAL_BLUE "INFO" DS_TERMINAL_RESET ": %s:%d: " format "\n", \
+            __FILE__, __LINE__, ##__VA_ARGS__)
+#endif
+
+#if DS_LOG_LEVEL > DS_LOG_LEVEL_DEBUG
+#define DS_LOG_DEBUG(format, ...)
+#else
+#define DS_LOG_DEBUG(format, ...)                                              \
+    fprintf(stdout, "DEBUG: %s:%d: " format "\n", __FILE__, __LINE__,          \
+            ##__VA_ARGS__)
+#endif
+
+#ifndef DS_PANIC
+#define DS_PANIC(format, ...)                                                  \
+    do {                                                                       \
+        DS_LOG_ERROR(format, ##__VA_ARGS__);                                   \
+        DS_EXIT(1);                                                            \
+    } while (0)
+#endif
+
+// DYNAMIC ARRAY
+//
+// The dynamic array is a simple array that grows as needed. To use the dynamic
+// array append macro, you need to define a struct with the following fields:
+//  - items: a pointer to the array of items
+//  - count: the number of items in the array
+//  - capacity: the number of items that can be stored in the array
+
+#define DS_DA_INIT_CAPACITY 8192
+#define ds_da_append(da, item)                                                 \
+    do {                                                                       \
+        if ((da)->count >= (da)->capacity) {                                   \
+            unsigned int new_capacity = (da)->capacity * 2;                    \
+            if (new_capacity == 0) {                                           \
+                new_capacity = DS_DA_INIT_CAPACITY;                            \
+            }                                                                  \
+                                                                               \
+            (da)->items = DS_REALLOC(NULL, (da)->items,                        \
+                                     (da)->capacity * sizeof(*(da)->items),    \
+                                     new_capacity * sizeof(*(da)->items));     \
+            if ((da)->items == NULL) {                                         \
+                DS_PANIC("Failed to reallocate dynamic array");                \
+            }                                                                  \
+                                                                               \
+            (da)->capacity = new_capacity;                                     \
+        }                                                                      \
+                                                                               \
+        (da)->items[(da)->count++] = (item);                                   \
+    } while (0)
+
+#define ds_da_append_many(da, new_items, new_items_count)                      \
+    do {                                                                       \
+        if ((da)->count + new_items_count > (da)->capacity) {                  \
+            if ((da)->capacity == 0) {                                         \
+                (da)->capacity = DS_DA_INIT_CAPACITY;                          \
+            }                                                                  \
+            while ((da)->count + new_items_count > (da)->capacity) {           \
+                (da)->capacity *= 2;                                           \
+            }                                                                  \
+                                                                               \
+            (da)->items = DS_REALLOC(NULL, (da)->items,                        \
+                                     (da)->capacity * sizeof(*(da)->items),    \
+                                     (da)->capacity * sizeof(*(da)->items));   \
+            if ((da)->items == NULL) {                                         \
+                DS_PANIC("Failed to reallocate dynamic array");                \
+            }                                                                  \
+        }                                                                      \
+                                                                               \
+        DS_MEMCPY((da)->items + (da)->count, new_items,                        \
+                  new_items_count * sizeof(*(da)->items));                     \
+        (da)->count += new_items_count;                                        \
+    } while (0)
+
+#endif // DS_CORE_IMPLEMENTATION
+
 #ifdef DS_PQ_IMPLEMENTATION
 
 // Initialize the priority queue
@@ -484,7 +556,7 @@ DSHDEF int ds_priority_queue_empty(ds_priority_queue *pq) {
 
 // Free the priority queue
 DSHDEF void ds_priority_queue_free(ds_priority_queue *pq) {
-    DS_FREE(pq->items);
+    DS_FREE(NULL, pq->items);
     pq->items = NULL;
     pq->count = 0;
     pq->capacity = 0;
@@ -535,7 +607,7 @@ DSHDEF int ds_string_builder_appendc(ds_string_builder *sb, char chr) {
 DSHDEF int ds_string_builder_build(ds_string_builder *sb, char **str) {
     int result = 0;
 
-    *str = DS_MALLOC(sb->count + 1);
+    *str = DS_MALLOC(NULL, sb->count + 1);
     if (*str == NULL) {
         DS_LOG_ERROR("Failed to allocate string");
         return_defer(1);
@@ -551,7 +623,7 @@ defer:
 // Free the string builder
 DSHDEF void ds_string_builder_free(ds_string_builder *sb) {
     if (sb->items != NULL) {
-        DS_FREE(sb->items);
+        DS_FREE(NULL, sb->items);
     }
     sb->items = NULL;
     sb->count = 0;
@@ -607,7 +679,7 @@ defer:
 DSHDEF int ds_string_slice_to_owned(ds_string_slice *ss, char **str) {
     int result = 0;
 
-    *str = DS_MALLOC(ss->len + 1);
+    *str = DS_MALLOC(NULL, ss->len + 1);
     if (*str == NULL) {
         DS_LOG_ERROR("Failed to allocate string");
         return_defer(1);
@@ -654,7 +726,7 @@ DSHDEF int ds_dynamic_array_append(ds_dynamic_array *da, const void *item) {
             new_capacity = DS_DA_INIT_CAPACITY;
         }
 
-        da->items = DS_REALLOC(da->items, da->capacity * da->item_size,
+        da->items = DS_REALLOC(NULL, da->items, da->capacity * da->item_size,
                                new_capacity * da->item_size);
 
         if (da->items == NULL) {
@@ -711,7 +783,7 @@ DSHDEF int ds_dynamic_array_append_many(ds_dynamic_array *da, void **new_items,
             da->capacity *= 2;
         }
 
-        da->items = DS_REALLOC(da->items, da->capacity * da->item_size,
+        da->items = DS_REALLOC(NULL, da->items, da->capacity * da->item_size,
                                da->capacity * da->item_size);
         if (da->items == NULL) {
             DS_LOG_ERROR("Failed to reallocate dynamic array");
@@ -753,7 +825,7 @@ DSHDEF void ds_dynamic_array_get_ref(ds_dynamic_array *da, unsigned int index,
 
 DSHDEF void ds_dynamic_array_copy(ds_dynamic_array *da,
                                   ds_dynamic_array *copy) {
-    copy->items = DS_MALLOC(da->capacity * da->item_size);
+    copy->items = DS_MALLOC(NULL, da->capacity * da->item_size);
     copy->item_size = da->item_size;
     copy->count = da->count;
     copy->capacity = da->capacity;
@@ -764,18 +836,18 @@ DSHDEF void ds_dynamic_array_copy(ds_dynamic_array *da,
 DSHDEF void ds_dynamic_array_reverse(ds_dynamic_array *da) {
     for (unsigned int i = 0; i < da->count / 2; i++) {
         unsigned int j = da->count - i - 1;
-        void *temp = DS_MALLOC(da->item_size);
+        void *temp = DS_MALLOC(NULL, da->item_size);
         DS_MEMCPY(temp, (char *)da->items + i * da->item_size, da->item_size);
         DS_MEMCPY((char *)da->items + i * da->item_size,
                   (char *)da->items + j * da->item_size, da->item_size);
         DS_MEMCPY((char *)da->items + j * da->item_size, temp, da->item_size);
-        DS_FREE(temp);
+        DS_FREE(NULL, temp);
     }
 }
 
 DSHDEF void ds_dynamic_array_free(ds_dynamic_array *da) {
     if (da->items != NULL) {
-        DS_FREE(da->items);
+        DS_FREE(NULL, da->items);
     }
     da->items = NULL;
     da->count = 0;
@@ -802,13 +874,13 @@ DSHDEF void ds_linked_list_init(ds_linked_list *ll, unsigned int item_size) {
 DSHDEF int ds_linked_list_push_back(ds_linked_list *ll, void *item) {
     int result = 0;
 
-    ds_linked_list_node *node = DS_MALLOC(sizeof(ds_linked_list_node));
+    ds_linked_list_node *node = DS_MALLOC(NULL, sizeof(ds_linked_list_node));
     if (node == NULL) {
         DS_LOG_ERROR("Failed to allocate linked list node");
         return_defer(1);
     }
 
-    node->item = DS_MALLOC(ll->item_size);
+    node->item = DS_MALLOC(NULL, ll->item_size);
     if (node->item == NULL) {
         DS_LOG_ERROR("Failed to allocate linked list item");
         return_defer(1);
@@ -830,9 +902,9 @@ DSHDEF int ds_linked_list_push_back(ds_linked_list *ll, void *item) {
 defer:
     if (result != 0 && node != NULL) {
         if (node->item != NULL) {
-            DS_FREE(node->item);
+            DS_FREE(NULL, node->item);
         }
-        DS_FREE(node);
+        DS_FREE(NULL, node);
     }
     return result;
 }
@@ -844,13 +916,13 @@ defer:
 DSHDEF int ds_linked_list_push_front(ds_linked_list *ll, void *item) {
     int result = 0;
 
-    ds_linked_list_node *node = DS_MALLOC(sizeof(ds_linked_list_node));
+    ds_linked_list_node *node = DS_MALLOC(NULL, sizeof(ds_linked_list_node));
     if (node == NULL) {
         DS_LOG_ERROR("Failed to allocate linked list node");
         return_defer(1);
     }
 
-    node->item = DS_MALLOC(ll->item_size);
+    node->item = DS_MALLOC(NULL, ll->item_size);
     if (node->item == NULL) {
         DS_LOG_ERROR("Failed to allocate linked list item");
         return_defer(1);
@@ -872,9 +944,9 @@ DSHDEF int ds_linked_list_push_front(ds_linked_list *ll, void *item) {
 defer:
     if (result != 0 && node != NULL) {
         if (node->item != NULL) {
-            DS_FREE(node->item);
+            DS_FREE(NULL, node->item);
         }
-        DS_FREE(node);
+        DS_FREE(NULL, node);
     }
     return result;
 }
@@ -906,9 +978,9 @@ DSHDEF int ds_linked_list_pop_back(ds_linked_list *ll, void *item) {
 defer:
     if (node != NULL) {
         if (node->item != NULL) {
-            DS_FREE(node->item);
+            DS_FREE(NULL, node->item);
         }
-        DS_FREE(node);
+        DS_FREE(NULL, node);
     }
     return result;
 }
@@ -940,9 +1012,9 @@ DSHDEF int ds_linked_list_pop_front(ds_linked_list *ll, void *item) {
 defer:
     if (node != NULL) {
         if (node->item != NULL) {
-            DS_FREE(node->item);
+            DS_FREE(NULL, node->item);
         }
-        DS_FREE(node);
+        DS_FREE(NULL, node);
     }
     return result;
 }
@@ -950,18 +1022,16 @@ defer:
 // Check if the linked list is empty
 //
 // Returns 1 if the list is empty, 0 if the list is not empty.
-DSHDEF int ds_linked_list_empty(ds_linked_list *ll) {
-    return ll->head == NULL;
-}
+DSHDEF int ds_linked_list_empty(ds_linked_list *ll) { return ll->head == NULL; }
 
 DSHDEF void ds_linked_list_free(ds_linked_list *ll) {
     ds_linked_list_node *node = ll->head;
     while (node != NULL) {
         ds_linked_list_node *next = node->next;
         if (node->item != NULL) {
-            DS_FREE(node->item);
+            DS_FREE(NULL, node->item);
         }
-        DS_FREE(node);
+        DS_FREE(NULL, node);
         node = next;
     }
     ll->head = NULL;
@@ -984,13 +1054,13 @@ DSHDEF int ds_hash_table_init(ds_hash_table *ht, unsigned int key_size,
                               int (*compare)(const void *, const void *)) {
     int result = 0;
 
-    ht->keys = DS_MALLOC(capacity * sizeof(ds_dynamic_array));
+    ht->keys = DS_MALLOC(NULL, capacity * sizeof(ds_dynamic_array));
     if (ht->keys == NULL) {
         DS_LOG_ERROR("Failed to allocate hash table keys");
         return_defer(1);
     }
 
-    ht->values = DS_MALLOC(capacity * sizeof(ds_dynamic_array));
+    ht->values = DS_MALLOC(NULL, capacity * sizeof(ds_dynamic_array));
     if (ht->values == NULL) {
         DS_LOG_ERROR("Failed to allocate hash table values");
         return_defer(1);
@@ -1011,10 +1081,10 @@ DSHDEF int ds_hash_table_init(ds_hash_table *ht, unsigned int key_size,
 defer:
     if (result != 0) {
         if (ht->keys != NULL) {
-            DS_FREE(ht->keys);
+            DS_FREE(NULL, ht->keys);
         }
         if (ht->values != NULL) {
-            DS_FREE(ht->values);
+            DS_FREE(NULL, ht->values);
         }
     }
     return result;
@@ -1082,7 +1152,8 @@ DSHDEF int ds_hash_table_has(ds_hash_table *ht, const void *key) {
 
 // Get an item from the hash table
 //
-// Returns 0 if the item was retrieved successfully, 1 if the item was not found.
+// Returns 0 if the item was retrieved successfully, 1 if the item was not
+// found.
 DSHDEF int ds_hash_table_get(ds_hash_table *ht, const void *key, void *value) {
     int result = 0;
 
@@ -1109,7 +1180,8 @@ defer:
 
 // Get a reference to an item from the hash table
 //
-// Returns 0 if the item was retrieved successfully, 1 if the item was not found.
+// Returns 0 if the item was retrieved successfully, 1 if the item was not
+// found.
 DSHDEF int ds_hash_table_get_ref(ds_hash_table *ht, const void *key,
                                  void **value) {
     int result = 0;
@@ -1162,8 +1234,8 @@ DSHDEF void ds_hash_table_free(ds_hash_table *ht) {
         ds_dynamic_array_free(ht->keys + i);
         ds_dynamic_array_free(ht->values + i);
     }
-    DS_FREE(ht->keys);
-    DS_FREE(ht->values);
+    DS_FREE(NULL, ht->keys);
+    DS_FREE(NULL, ht->values);
 }
 
 #endif // DS_HT_IMPLEMENTATION
