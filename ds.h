@@ -56,6 +56,8 @@
 #ifndef DS_H
 #define DS_H
 
+// TODO: use allocator in all structures
+
 #ifndef DSHDEF
 #ifdef DSH_STATIC
 #define DSHDEF static
@@ -71,7 +73,7 @@
 // should return a positive value if the first item has higher priority than
 // the second item, a negative value if the second item has higher priority than
 // the first item, and 0 if the items have the same priority.
-typedef struct ds_priority_queue {
+typedef struct ds_priority_queue { // TODO: use dynamic array
         void **items;
         unsigned int count;
         unsigned int capacity;
