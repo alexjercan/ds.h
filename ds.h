@@ -61,7 +61,6 @@
 #include <stdint.h>
 
 // TODO: rework the hash table to actually work
-// TODO: use allocator in all structures
 
 #ifndef DSHDEF
 #ifdef DSH_STATIC
@@ -222,6 +221,7 @@ DSHDEF void ds_linked_list_free(ds_linked_list *ll);
 // You can define the hash and compare functions to use when inserting and
 // retrieving items.
 typedef struct ds_hash_table {
+        struct ds_allocator *allocator;
         ds_dynamic_array *keys;
         ds_dynamic_array *values;
         unsigned int key_size;
@@ -231,6 +231,10 @@ typedef struct ds_hash_table {
         int (*compare)(const void *, const void *);
 } ds_hash_table;
 
+DSHDEF int ds_hash_table_init_allocator(
+    ds_hash_table *ht, unsigned int key_size, unsigned int value_size,
+    unsigned int capacity, unsigned int (*hash)(const void *),
+    int (*compare)(const void *, const void *), struct ds_allocator *allocator);
 DSHDEF int ds_hash_table_init(ds_hash_table *ht, unsigned int key_size,
                               unsigned int value_size, unsigned int capacity,
                               unsigned int (*hash)(const void *),
@@ -515,11 +519,9 @@ static inline void *ds_realloc(void *a, void *ptr, unsigned int old_sz,
 #ifdef DS_PQ_IMPLEMENTATION
 
 // Initialize the priority queue with a custom allocator
-DSHDEF void ds_priority_queue_init_allocator(ds_priority_queue *pq,
-                                             int (*compare)(const void *,
-                                                            const void *),
-                                             unsigned int item_size,
-                                             struct ds_allocator *allocator) {
+DSHDEF void ds_priority_queue_init_allocator(
+    ds_priority_queue *pq, int (*compare)(const void *, const void *),
+    unsigned int item_size, struct ds_allocator *allocator) {
     ds_dynamic_array_init_allocator(&pq->items, item_size, allocator);
 
     pq->compare = compare;
@@ -529,9 +531,7 @@ DSHDEF void ds_priority_queue_init_allocator(ds_priority_queue *pq,
 DSHDEF void ds_priority_queue_init(ds_priority_queue *pq,
                                    int (*compare)(const void *, const void *),
                                    unsigned int item_size) {
-    ds_dynamic_array_init(&pq->items, item_size);
-
-    pq->compare = compare;
+    ds_priority_queue_init_allocator(pq, compare, item_size, NULL);
 }
 
 // Insert an item into the priority queue
@@ -587,7 +587,8 @@ DSHDEF int ds_priority_queue_pull(ds_priority_queue *pq, void *item) {
         void *left_item = NULL;
         ds_dynamic_array_get_ref(&pq->items, swap, &swap_item);
         ds_dynamic_array_get_ref(&pq->items, left, &left_item);
-        if (left < pq->items.count - 1 && pq->compare(left_item, swap_item) > 0) {
+        if (left < pq->items.count - 1 &&
+            pq->compare(left_item, swap_item) > 0) {
             swap = left;
         }
 
@@ -595,7 +596,8 @@ DSHDEF int ds_priority_queue_pull(ds_priority_queue *pq, void *item) {
         void *right_item = NULL;
         ds_dynamic_array_get_ref(&pq->items, swap, &swap_item);
         ds_dynamic_array_get_ref(&pq->items, right, &right_item);
-        if (right < pq->items.count - 1 && pq->compare(right_item, swap_item) > 0) {
+        if (right < pq->items.count - 1 &&
+            pq->compare(right_item, swap_item) > 0) {
             swap = right;
         }
 
@@ -648,7 +650,7 @@ DSHDEF void ds_string_builder_init_allocator(ds_string_builder *sb,
 
 // Initialize the string builder
 DSHDEF void ds_string_builder_init(ds_string_builder *sb) {
-    ds_dynamic_array_init(&sb->items, sizeof(char));
+    ds_string_builder_init_allocator(sb, NULL);
 }
 
 // Append a formatted string to the string builder
@@ -706,16 +708,15 @@ DSHDEF void ds_string_builder_free(ds_string_builder *sb) {
 DSHDEF void ds_string_slice_init_allocator(ds_string_slice *ss, char *str,
                                            unsigned int len,
                                            struct ds_allocator *allocator) {
-    ds_string_slice_init(ss, str, len);
     ss->allocator = allocator;
+    ss->str = str;
+    ss->len = len;
 }
 
 // Initialize the string slice
 DSHDEF void ds_string_slice_init(ds_string_slice *ss, char *str,
                                  unsigned int len) {
-    ss->allocator = NULL;
-    ss->str = str;
-    ss->len = len;
+    ds_string_slice_init_allocator(ss, str, len, NULL);
 }
 
 // Tokenize the string slice by a delimiter
@@ -785,8 +786,11 @@ DSHDEF void ds_string_slice_free(ds_string_slice *ss) {
 DSHDEF void ds_dynamic_array_init_allocator(ds_dynamic_array *da,
                                             unsigned int item_size,
                                             struct ds_allocator *allocator) {
-    ds_dynamic_array_init(da, item_size);
     da->allocator = allocator;
+    da->items = NULL;
+    da->item_size = item_size;
+    da->count = 0;
+    da->capacity = 0;
 }
 
 // Initialize the dynamic array
@@ -794,11 +798,7 @@ DSHDEF void ds_dynamic_array_init_allocator(ds_dynamic_array *da,
 // The item_size parameter is the size of each item in the array.
 DSHDEF void ds_dynamic_array_init(ds_dynamic_array *da,
                                   unsigned int item_size) {
-    da->allocator = NULL;
-    da->items = NULL;
-    da->item_size = item_size;
-    da->count = 0;
-    da->capacity = 0;
+    ds_dynamic_array_init_allocator(da, item_size, NULL);
 }
 
 // Append an item to the dynamic array
@@ -1019,18 +1019,17 @@ DSHDEF void ds_dynamic_array_free(ds_dynamic_array *da) {
 DSHDEF void ds_linked_list_init_allocator(ds_linked_list *ll,
                                           unsigned int item_size,
                                           struct ds_allocator *allocator) {
-    ds_linked_list_init(ll, item_size);
     ll->allocator = allocator;
+    ll->item_size = item_size;
+    ll->head = NULL;
+    ll->tail = NULL;
 }
 
 // Initialize the linked list
 //
 // The item_size parameter is the size of each item in the list.
 DSHDEF void ds_linked_list_init(ds_linked_list *ll, unsigned int item_size) {
-    ll->allocator = NULL;
-    ll->item_size = item_size;
-    ll->head = NULL;
-    ll->tail = NULL;
+    ds_linked_list_init_allocator(ll, item_size, NULL);
 }
 
 // Push an item to the back of the linked list
@@ -1210,25 +1209,24 @@ DSHDEF void ds_linked_list_free(ds_linked_list *ll) {
 
 #ifdef DS_HT_IMPLEMENTATION
 
-// Initialize the hash table
-//
-// The key_size and value_size parameters are the size of each key and value in
-// the table. The capacity parameter is the initial capacity of the table. The
-// hash and compare parameters are the hash and compare functions to use when
-// inserting and retrieving items.
-DSHDEF int ds_hash_table_init(ds_hash_table *ht, unsigned int key_size,
-                              unsigned int value_size, unsigned int capacity,
-                              unsigned int (*hash)(const void *),
-                              int (*compare)(const void *, const void *)) {
+// Initialize the hash table with a custom allocator
+DSHDEF int
+ds_hash_table_init_allocator(ds_hash_table *ht, unsigned int key_size,
+                             unsigned int value_size, unsigned int capacity,
+                             unsigned int (*hash)(const void *),
+                             int (*compare)(const void *, const void *),
+                             struct ds_allocator *allocator) {
     int result = 0;
 
-    ht->keys = DS_MALLOC(NULL, capacity * sizeof(ds_dynamic_array));
+    ht->allocator = allocator;
+
+    ht->keys = DS_MALLOC(ht->allocator, capacity * sizeof(ds_dynamic_array));
     if (ht->keys == NULL) {
         DS_LOG_ERROR("Failed to allocate hash table keys");
         return_defer(1);
     }
 
-    ht->values = DS_MALLOC(NULL, capacity * sizeof(ds_dynamic_array));
+    ht->values = DS_MALLOC(ht->allocator, capacity * sizeof(ds_dynamic_array));
     if (ht->values == NULL) {
         DS_LOG_ERROR("Failed to allocate hash table values");
         return_defer(1);
@@ -1256,6 +1254,20 @@ defer:
         }
     }
     return result;
+}
+
+// Initialize the hash table
+//
+// The key_size and value_size parameters are the size of each key and value in
+// the table. The capacity parameter is the initial capacity of the table. The
+// hash and compare parameters are the hash and compare functions to use when
+// inserting and retrieving items.
+DSHDEF int ds_hash_table_init(ds_hash_table *ht, unsigned int key_size,
+                              unsigned int value_size, unsigned int capacity,
+                              unsigned int (*hash)(const void *),
+                              int (*compare)(const void *, const void *)) {
+    return ds_hash_table_init_allocator(ht, key_size, value_size, capacity, hash,
+                                       compare, NULL);
 }
 
 // Insert an item into the hash table
