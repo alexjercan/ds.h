@@ -58,14 +58,6 @@ struct position_node {
         int f;
 };
 
-struct position_node *position_node_new(struct position p, int f) {
-    struct position_node *node =
-        (struct position_node *)malloc(sizeof(struct position_node));
-    node->p = p;
-    node->f = f;
-    return node;
-}
-
 int position_node_compare_min(const void *a, const void *b) {
     return ((struct position_node *)b)->f - ((struct position_node *)a)->f;
 }
@@ -105,11 +97,10 @@ int a_star(struct world *w, struct position start, struct position end,
     // This is usually implemented as a min-heap or priority queue rather than a
     // hash-set.
     ds_priority_queue open_set;
-    ds_priority_queue_init(&open_set, position_node_compare_min);
+    ds_priority_queue_init(&open_set, position_node_compare_min, sizeof(struct position_node));
 
-    struct position_node *start_node =
-        position_node_new(start, manhattan_distance(start, end));
-    ds_priority_queue_insert(&open_set, start_node);
+    struct position_node start_node = { start, manhattan_distance(start, end) };
+    ds_priority_queue_insert(&open_set, &start_node);
 
     // For node n, cameFrom[n] is the node immediately preceding it on the
     // cheapest path from the start to n currently known.
@@ -135,18 +126,17 @@ int a_star(struct world *w, struct position start, struct position end,
     }
     f_score[position_hash(w, start)] = manhattan_distance(start, end);
 
-    struct position_node *current_node = NULL;
+    struct position_node current_node = {0};
     while (ds_priority_queue_empty(&open_set) == 0) {
         // This operation can occur in O(Log(N)) time if openSet is a min-heap
         // or a priority queue
-        current_node = NULL;
-        ds_priority_queue_pull(&open_set, (void **)&current_node);
-        int current_index = position_hash(w, current_node->p);
+        ds_priority_queue_pull(&open_set, (void *)&current_node);
+        int current_index = position_hash(w, current_node.p);
 
-        struct position current = current_node->p;
+        struct position current = current_node.p;
 
-        if (position_equals(current_node->p, end)) {
-            reconstruct_path(w, came_from, current_node->p, p);
+        if (position_equals(current_node.p, end)) {
+            reconstruct_path(w, came_from, current_node.p, p);
             return_defer(1);
         }
 
@@ -172,9 +162,10 @@ int a_star(struct world *w, struct position start, struct position end,
                     tentative_g_score + manhattan_distance(neighbor, end);
 
                 int found = 0;
-                for (unsigned int j = 0; j < open_set.count; j++) {
-                    struct position_node *node =
-                        (struct position_node *)open_set.items[j];
+                for (unsigned int j = 0; j < open_set.items.count; j++) {
+                    struct position_node *node = NULL;
+                    ds_dynamic_array_get_ref(&open_set.items, j, (void **)&node);
+
                     if (position_equals(node->p, neighbor)) {
                         found = 1;
                         break;
@@ -182,25 +173,14 @@ int a_star(struct world *w, struct position start, struct position end,
                 }
 
                 if (found == 0) {
-                    struct position_node *neighbor_node =
-                        position_node_new(neighbor, f_score[neighbor_index]);
-                    ds_priority_queue_insert(&open_set, neighbor_node);
+                    struct position_node neighbor_node = { neighbor, f_score[neighbor_index] };
+                    ds_priority_queue_insert(&open_set, &neighbor_node);
                 }
             }
         }
-
-        position_node_free(current_node);
     }
 
 defer:
-    if (current_node != NULL) {
-        position_node_free(current_node);
-    }
-    while (ds_priority_queue_empty(&open_set) == 0) {
-        struct position_node *node = NULL;
-        ds_priority_queue_pull(&open_set, (void **)&node);
-        position_node_free(node);
-    }
     ds_priority_queue_free(&open_set);
     free(came_from);
     free(g_score);

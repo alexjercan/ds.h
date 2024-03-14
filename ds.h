@@ -62,7 +62,6 @@
 
 // TODO: rework the hash table to actually work
 // TODO: use allocator in all structures
-// TODO: rework the priority queue to use a dynamic array
 
 #ifndef DSHDEF
 #ifdef DSH_STATIC
@@ -131,18 +130,20 @@ DSHDEF void ds_dynamic_array_free(ds_dynamic_array *da);
 // the second item, a negative value if the second item has higher priority than
 // the first item, and 0 if the items have the same priority.
 typedef struct ds_priority_queue {
-        void **items;
-        unsigned int count;
-        unsigned int capacity;
+        ds_dynamic_array items;
 
         int (*compare)(const void *, const void *);
 } ds_priority_queue;
 
+DSHDEF void ds_priority_queue_init_allocator(
+    ds_priority_queue *pq, int (*compare)(const void *, const void *),
+    unsigned int item_size, struct ds_allocator *allocator);
 DSHDEF void ds_priority_queue_init(ds_priority_queue *pq,
-                                   int (*compare)(const void *, const void *));
+                                   int (*compare)(const void *, const void *),
+                                   unsigned int item_size);
 DSHDEF int ds_priority_queue_insert(ds_priority_queue *pq, void *item);
-DSHDEF int ds_priority_queue_pull(ds_priority_queue *pq, void **item);
-DSHDEF int ds_priority_queue_peek(ds_priority_queue *pq, void **item);
+DSHDEF int ds_priority_queue_pull(ds_priority_queue *pq, void *item);
+DSHDEF int ds_priority_queue_peek(ds_priority_queue *pq, void *item);
 DSHDEF int ds_priority_queue_empty(ds_priority_queue *pq);
 DSHDEF void ds_priority_queue_free(ds_priority_queue *pq);
 
@@ -255,6 +256,10 @@ DSHDEF void ds_hash_table_free(ds_hash_table *ht);
 #define DS_HT_IMPLEMENTATION
 #define DS_AL_IMPLEMENTATION
 #endif // DS_IMPLEMENTATION
+
+#ifdef DS_PQ_IMPLEMENTATION
+#define DS_DA_IMPLEMENTATION
+#endif // DS_PQ_IMPLEMENTATION
 
 #ifdef DS_SB_IMPLEMENTATION
 #define DS_DA_IMPLEMENTATION
@@ -509,12 +514,23 @@ static inline void *ds_realloc(void *a, void *ptr, unsigned int old_sz,
 
 #ifdef DS_PQ_IMPLEMENTATION
 
+// Initialize the priority queue with a custom allocator
+DSHDEF void ds_priority_queue_init_allocator(ds_priority_queue *pq,
+                                             int (*compare)(const void *,
+                                                            const void *),
+                                             unsigned int item_size,
+                                             struct ds_allocator *allocator) {
+    ds_dynamic_array_init_allocator(&pq->items, item_size, allocator);
+
+    pq->compare = compare;
+}
+
 // Initialize the priority queue
 DSHDEF void ds_priority_queue_init(ds_priority_queue *pq,
-                                   int (*compare)(const void *, const void *)) {
-    pq->items = NULL;
-    pq->count = 0;
-    pq->capacity = 0;
+                                   int (*compare)(const void *, const void *),
+                                   unsigned int item_size) {
+    ds_dynamic_array_init(&pq->items, item_size);
+
     pq->compare = compare;
 }
 
@@ -522,18 +538,25 @@ DSHDEF void ds_priority_queue_init(ds_priority_queue *pq,
 //
 // Returns 0 if the item was inserted successfully.
 DSHDEF int ds_priority_queue_insert(ds_priority_queue *pq, void *item) {
-    ds_da_append(pq, item);
+    ds_dynamic_array_append(&pq->items, item);
 
-    int index = pq->count - 1;
+    int index = pq->items.count - 1;
     int parent = (index - 1) / 2;
 
-    while (index != 0 && pq->compare(pq->items[index], pq->items[parent]) > 0) {
-        void *temp = pq->items[index];
-        pq->items[index] = pq->items[parent];
-        pq->items[parent] = temp;
+    void *index_item = NULL;
+    ds_dynamic_array_get_ref(&pq->items, index, &index_item);
+
+    void *parent_item = NULL;
+    ds_dynamic_array_get_ref(&pq->items, parent, &parent_item);
+
+    while (index != 0 && pq->compare(index_item, parent_item) > 0) {
+        ds_dynamic_array_swap(&pq->items, index, parent);
 
         index = parent;
         parent = (index - 1) / 2;
+
+        ds_dynamic_array_get_ref(&pq->items, index, &index_item);
+        ds_dynamic_array_get_ref(&pq->items, parent, &parent_item);
     }
 
     return 0;
@@ -543,41 +566,43 @@ DSHDEF int ds_priority_queue_insert(ds_priority_queue *pq, void *item) {
 //
 // Returns 0 if an item was pulled successfully, 1 if the priority queue is
 // empty.
-DSHDEF int ds_priority_queue_pull(ds_priority_queue *pq, void **item) {
+DSHDEF int ds_priority_queue_pull(ds_priority_queue *pq, void *item) {
     int result = 0;
 
-    if (pq->count == 0) {
+    if (pq->items.count == 0) {
         DS_LOG_ERROR("Priority queue is empty");
-        *item = NULL;
         return_defer(1);
     }
 
-    *item = pq->items[0];
-    pq->items[0] = pq->items[pq->count - 1];
+    ds_dynamic_array_get(&pq->items, 0, item);
+    ds_dynamic_array_swap(&pq->items, 0, pq->items.count - 1);
 
     unsigned int index = 0;
     unsigned int swap = index;
+    void *swap_item = NULL;
     do {
         index = swap;
 
         unsigned int left = 2 * index + 1;
-        if (left < pq->count &&
-            pq->compare(pq->items[left], pq->items[swap]) > 0) {
+        void *left_item = NULL;
+        ds_dynamic_array_get_ref(&pq->items, swap, &swap_item);
+        ds_dynamic_array_get_ref(&pq->items, left, &left_item);
+        if (left < pq->items.count - 1 && pq->compare(left_item, swap_item) > 0) {
             swap = left;
         }
 
         unsigned int right = 2 * index + 2;
-        if (right < pq->count &&
-            pq->compare(pq->items[right], pq->items[swap]) > 0) {
+        void *right_item = NULL;
+        ds_dynamic_array_get_ref(&pq->items, swap, &swap_item);
+        ds_dynamic_array_get_ref(&pq->items, right, &right_item);
+        if (right < pq->items.count - 1 && pq->compare(right_item, swap_item) > 0) {
             swap = right;
         }
 
-        void *temp = pq->items[index];
-        pq->items[index] = pq->items[swap];
-        pq->items[swap] = temp;
+        ds_dynamic_array_swap(&pq->items, index, swap);
     } while (swap != index);
 
-    pq->count--;
+    pq->items.count--;
 defer:
     return result;
 }
@@ -586,16 +611,15 @@ defer:
 //
 // Returns 0 if an item was peeked successfully, 1 if the priority queue is
 // empty.
-DSHDEF int ds_priority_queue_peek(ds_priority_queue *pq, void **item) {
+DSHDEF int ds_priority_queue_peek(ds_priority_queue *pq, void *item) {
     int result = 0;
 
-    if (pq->count == 0) {
+    if (pq->items.count == 0) {
         DS_LOG_ERROR("Priority queue is empty");
-        *item = NULL;
         return_defer(1);
     }
 
-    *item = pq->items[0];
+    ds_dynamic_array_get(&pq->items, 0, item);
 
 defer:
     return result;
@@ -603,15 +627,13 @@ defer:
 
 // Check if the priority queue is empty
 DSHDEF int ds_priority_queue_empty(ds_priority_queue *pq) {
-    return pq->count == 0;
+    return pq->items.count == 0;
 }
 
 // Free the priority queue
 DSHDEF void ds_priority_queue_free(ds_priority_queue *pq) {
-    DS_FREE(NULL, pq->items);
-    pq->items = NULL;
-    pq->count = 0;
-    pq->capacity = 0;
+    ds_dynamic_array_free(&pq->items);
+
     pq->compare = NULL;
 }
 
@@ -961,10 +983,16 @@ DSHDEF int ds_dynamic_array_swap(ds_dynamic_array *da, unsigned int index1,
         return_defer(1);
     }
 
-    DS_MEMCPY(temp, (char *)da->items + index1 * da->item_size, da->item_size);
-    DS_MEMCPY((char *)da->items + index1 * da->item_size,
-              (char *)da->items + index2 * da->item_size, da->item_size);
-    DS_MEMCPY((char *)da->items + index2 * da->item_size, temp, da->item_size);
+    void *index1_item = NULL;
+    ds_dynamic_array_get_ref(da, index1, &index1_item);
+
+    void *index2_item = NULL;
+    ds_dynamic_array_get_ref(da, index2, &index2_item);
+
+    DS_MEMCPY(temp, index1_item, da->item_size);
+    DS_MEMCPY(index1_item, index2_item, da->item_size);
+    DS_MEMCPY(index2_item, temp, da->item_size);
+
     DS_FREE(da->allocator, temp);
 
 defer:
