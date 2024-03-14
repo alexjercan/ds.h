@@ -24,7 +24,7 @@
 // - DS_HT_IMPLEMENTATION: Define this macro in one source file to include the
 // implementation of the hash table data structure
 // - DS_AL_IMPLEMENTATION: Define this macro in one source file to include the
-// implementation of the allocator utility
+// implementation of the allocator utility and set the allocator to use
 //
 // MEMORY MANAGEMENT
 //
@@ -61,6 +61,9 @@
 #include <stdint.h>
 
 // TODO: use allocator in all structures
+// TODO: rework the hash table to actually work
+// TODO: rework the priority queue to use a dynamic array
+// TODO: rework the string builder to use a dynamic array
 
 #ifndef DSHDEF
 #ifdef DSH_STATIC
@@ -75,18 +78,18 @@
 // The allocator is a simple utility to allocate and free memory. You can define
 // the allocator to use when allocating and freeing memory. This can be used in
 // all the other data structures and utilities to use a custom allocator.
-typedef struct allocator {
+typedef struct ds_allocator {
         uint8_t *start;
         uint8_t *prev;
         uint8_t *top;
         uint64_t size;
-} allocator_t;
+} ds_allocator;
 
-DSHDEF void allocator_init(allocator_t *allocator, uint8_t *start,
+DSHDEF void ds_allocator_init(ds_allocator *allocator, uint8_t *start,
                            uint64_t size);
-DSHDEF void allocator_dump(allocator_t *allocator);
-DSHDEF void *allocator_alloc(allocator_t *allocator, uint64_t size);
-DSHDEF void allocator_free(allocator_t *allocator, void *ptr);
+DSHDEF void ds_allocator_dump(ds_allocator *allocator);
+DSHDEF void *ds_allocator_alloc(ds_allocator *allocator, uint64_t size);
+DSHDEF void ds_allocator_free(ds_allocator *allocator, void *ptr);
 
 // DYNAMIC ARRAY
 //
@@ -96,12 +99,16 @@ DSHDEF void allocator_free(allocator_t *allocator, void *ptr);
 // can be used with any type of item, unlike the macros which require you to
 // define the array structure with the items, count and capacity fields.
 typedef struct ds_dynamic_array {
+        struct ds_allocator *allocator;
         void *items;
         unsigned int item_size;
         unsigned int count;
         unsigned int capacity;
 } ds_dynamic_array;
 
+DSHDEF void ds_dynamic_array_init_allocator(ds_dynamic_array *da,
+                                            unsigned int item_size,
+                                            struct ds_allocator *allocator);
 DSHDEF void ds_dynamic_array_init(ds_dynamic_array *da, unsigned int item_size);
 DSHDEF int ds_dynamic_array_append(ds_dynamic_array *da, const void *item);
 DSHDEF int ds_dynamic_array_pop(ds_dynamic_array *da, const void **item);
@@ -122,7 +129,7 @@ DSHDEF void ds_dynamic_array_free(ds_dynamic_array *da);
 // should return a positive value if the first item has higher priority than
 // the second item, a negative value if the second item has higher priority than
 // the first item, and 0 if the items have the same priority.
-typedef struct ds_priority_queue { // TODO: use dynamic array
+typedef struct ds_priority_queue {
         void **items;
         unsigned int count;
         unsigned int capacity;
@@ -163,10 +170,14 @@ DSHDEF void ds_string_builder_free(ds_string_builder *sb);
 // string slice to tokenize a string, and to convert a string slice to an owned
 // string.
 typedef struct ds_string_slice {
+        struct ds_allocator *allocator;
         char *str;
         unsigned int len;
 } ds_string_slice;
 
+DSHDEF void ds_string_slice_init_allocator(ds_string_slice *ss, char *str,
+                                           unsigned int len,
+                                           struct ds_allocator *allocator);
 DSHDEF void ds_string_slice_init(ds_string_slice *ss, char *str,
                                  unsigned int len);
 DSHDEF int ds_string_slice_tokenize(ds_string_slice *ss, char delimiter,
@@ -185,11 +196,15 @@ typedef struct ds_linked_list_node {
 } ds_linked_list_node;
 
 typedef struct ds_linked_list {
+        struct ds_allocator *allocator;
         unsigned int item_size;
         ds_linked_list_node *head;
         ds_linked_list_node *tail;
 } ds_linked_list;
 
+DSHDEF void ds_linked_list_init_allocator(ds_linked_list *ll,
+                                          unsigned int item_size,
+                                          struct ds_allocator *allocator);
 DSHDEF void ds_linked_list_init(ds_linked_list *ll, unsigned int item_size);
 DSHDEF int ds_linked_list_push_back(ds_linked_list *ll, void *item);
 DSHDEF int ds_linked_list_push_front(ds_linked_list *ll, void *item);
@@ -309,12 +324,18 @@ DSHDEF void ds_hash_table_free(ds_hash_table *ht);
 #if defined(DS_MALLOC) && defined(DS_FREE)
 // ok
 #elif !defined(DS_MALLOC) && !defined(DS_FREE) && !defined(DS_REALLOC) &&      \
-    !defined(DS_NO_STDLIB)
+    !defined(DS_NO_STDLIB) && !defined(DS_AL_IMPLEMENTATION)
 #define DS_MALLOC(a, sz) malloc(sz)
 #define DS_REALLOC(a, ptr, old_sz, new_sz) realloc(ptr, new_sz)
 #define DS_FREE(a, ptr) free(ptr)
+#elif !defined(DS_MALLOC) && !defined(DS_FREE) && !defined(DS_REALLOC) &&      \
+    defined(DS_AL_IMPLEMENTATION)
+#define DS_MALLOC(a, sz) ds_allocator_alloc(a, sz)
+#define DS_FREE(a, ptr) ds_allocator_free(a, ptr)
 #elif defined(DS_NO_STDLIB)
 #error "Must define DS_MALLOC and DS_FREE when DS_NO_STDLIB is defined"
+#elif defined(DS_REALLOC) && !defined(DS_MALLOC) && !defined(DS_FREE)
+#error "Must define DS_MALLOC and DS_FREE when DS_REALLOC is defined"
 #else
 #error "Must define both DS_MALLOC and DS_FREE, or neither"
 #endif
@@ -660,9 +681,17 @@ DSHDEF void ds_string_builder_free(ds_string_builder *sb) {
 
 #ifdef DS_SS_IMPLEMENTATION
 
+DSHDEF void ds_string_slice_init_allocator(ds_string_slice *ss, char *str,
+                                           unsigned int len,
+                                           struct ds_allocator *allocator) {
+    ds_string_slice_init(ss, str, len);
+    ss->allocator = allocator;
+}
+
 // Initialize the string slice
 DSHDEF void ds_string_slice_init(ds_string_slice *ss, char *str,
                                  unsigned int len) {
+    ss->allocator = NULL;
     ss->str = str;
     ss->len = len;
 }
@@ -705,7 +734,7 @@ defer:
 DSHDEF int ds_string_slice_to_owned(ds_string_slice *ss, char **str) {
     int result = 0;
 
-    *str = DS_MALLOC(NULL, ss->len + 1);
+    *str = DS_MALLOC(ss->allocator, ss->len + 1);
     if (*str == NULL) {
         DS_LOG_ERROR("Failed to allocate string");
         return_defer(1);
@@ -728,11 +757,22 @@ DSHDEF void ds_string_slice_free(ds_string_slice *ss) {
 
 #ifdef DS_DA_IMPLEMENTATION
 
+// Initialize the dynamic array with a custom allocator
+//
+// The item_size parameter is the size of each item in the array.
+DSHDEF void ds_dynamic_array_init_allocator(ds_dynamic_array *da,
+                                            unsigned int item_size,
+                                            struct ds_allocator *allocator) {
+    ds_dynamic_array_init(da, item_size);
+    da->allocator = allocator;
+}
+
 // Initialize the dynamic array
 //
 // The item_size parameter is the size of each item in the array.
 DSHDEF void ds_dynamic_array_init(ds_dynamic_array *da,
                                   unsigned int item_size) {
+    da->allocator = NULL;
     da->items = NULL;
     da->item_size = item_size;
     da->count = 0;
@@ -752,8 +792,9 @@ DSHDEF int ds_dynamic_array_append(ds_dynamic_array *da, const void *item) {
             new_capacity = DS_DA_INIT_CAPACITY;
         }
 
-        da->items = DS_REALLOC(NULL, da->items, da->capacity * da->item_size,
-                               new_capacity * da->item_size);
+        da->items =
+            DS_REALLOC(da->allocator, da->items, da->capacity * da->item_size,
+                       new_capacity * da->item_size);
 
         if (da->items == NULL) {
             DS_LOG_ERROR("Failed to reallocate dynamic array");
@@ -809,8 +850,9 @@ DSHDEF int ds_dynamic_array_append_many(ds_dynamic_array *da, void **new_items,
             da->capacity *= 2;
         }
 
-        da->items = DS_REALLOC(NULL, da->items, da->capacity * da->item_size,
-                               da->capacity * da->item_size);
+        da->items =
+            DS_REALLOC(da->allocator, da->items, da->capacity * da->item_size,
+                       da->capacity * da->item_size);
         if (da->items == NULL) {
             DS_LOG_ERROR("Failed to reallocate dynamic array");
             return_defer(1);
@@ -851,7 +893,7 @@ DSHDEF void ds_dynamic_array_get_ref(ds_dynamic_array *da, unsigned int index,
 
 DSHDEF void ds_dynamic_array_copy(ds_dynamic_array *da,
                                   ds_dynamic_array *copy) {
-    copy->items = DS_MALLOC(NULL, da->capacity * da->item_size);
+    copy->items = DS_MALLOC(da->allocator, da->capacity * da->item_size);
     copy->item_size = da->item_size;
     copy->count = da->count;
     copy->capacity = da->capacity;
@@ -862,18 +904,18 @@ DSHDEF void ds_dynamic_array_copy(ds_dynamic_array *da,
 DSHDEF void ds_dynamic_array_reverse(ds_dynamic_array *da) {
     for (unsigned int i = 0; i < da->count / 2; i++) {
         unsigned int j = da->count - i - 1;
-        void *temp = DS_MALLOC(NULL, da->item_size);
+        void *temp = DS_MALLOC(da->allocator, da->item_size);
         DS_MEMCPY(temp, (char *)da->items + i * da->item_size, da->item_size);
         DS_MEMCPY((char *)da->items + i * da->item_size,
                   (char *)da->items + j * da->item_size, da->item_size);
         DS_MEMCPY((char *)da->items + j * da->item_size, temp, da->item_size);
-        DS_FREE(NULL, temp);
+        DS_FREE(da->allocator, temp);
     }
 }
 
 DSHDEF void ds_dynamic_array_free(ds_dynamic_array *da) {
     if (da->items != NULL) {
-        DS_FREE(NULL, da->items);
+        DS_FREE(da->allocator, da->items);
     }
     da->items = NULL;
     da->count = 0;
@@ -884,10 +926,21 @@ DSHDEF void ds_dynamic_array_free(ds_dynamic_array *da) {
 
 #ifdef DS_LL_IMPLEMENTATION
 
+// Initialize the linked list with a custom allocator
+//
+// The item_size parameter is the size of each item in the list.
+DSHDEF void ds_linked_list_init_allocator(ds_linked_list *ll,
+                                          unsigned int item_size,
+                                          struct ds_allocator *allocator) {
+    ds_linked_list_init(ll, item_size);
+    ll->allocator = allocator;
+}
+
 // Initialize the linked list
 //
 // The item_size parameter is the size of each item in the list.
 DSHDEF void ds_linked_list_init(ds_linked_list *ll, unsigned int item_size) {
+    ll->allocator = NULL;
     ll->item_size = item_size;
     ll->head = NULL;
     ll->tail = NULL;
@@ -900,13 +953,14 @@ DSHDEF void ds_linked_list_init(ds_linked_list *ll, unsigned int item_size) {
 DSHDEF int ds_linked_list_push_back(ds_linked_list *ll, void *item) {
     int result = 0;
 
-    ds_linked_list_node *node = DS_MALLOC(NULL, sizeof(ds_linked_list_node));
+    ds_linked_list_node *node =
+        DS_MALLOC(ll->allocator, sizeof(ds_linked_list_node));
     if (node == NULL) {
         DS_LOG_ERROR("Failed to allocate linked list node");
         return_defer(1);
     }
 
-    node->item = DS_MALLOC(NULL, ll->item_size);
+    node->item = DS_MALLOC(ll->allocator, ll->item_size);
     if (node->item == NULL) {
         DS_LOG_ERROR("Failed to allocate linked list item");
         return_defer(1);
@@ -928,9 +982,9 @@ DSHDEF int ds_linked_list_push_back(ds_linked_list *ll, void *item) {
 defer:
     if (result != 0 && node != NULL) {
         if (node->item != NULL) {
-            DS_FREE(NULL, node->item);
+            DS_FREE(ll->allocator, node->item);
         }
-        DS_FREE(NULL, node);
+        DS_FREE(ll->allocator, node);
     }
     return result;
 }
@@ -942,13 +996,14 @@ defer:
 DSHDEF int ds_linked_list_push_front(ds_linked_list *ll, void *item) {
     int result = 0;
 
-    ds_linked_list_node *node = DS_MALLOC(NULL, sizeof(ds_linked_list_node));
+    ds_linked_list_node *node =
+        DS_MALLOC(ll->allocator, sizeof(ds_linked_list_node));
     if (node == NULL) {
         DS_LOG_ERROR("Failed to allocate linked list node");
         return_defer(1);
     }
 
-    node->item = DS_MALLOC(NULL, ll->item_size);
+    node->item = DS_MALLOC(ll->allocator, ll->item_size);
     if (node->item == NULL) {
         DS_LOG_ERROR("Failed to allocate linked list item");
         return_defer(1);
@@ -970,9 +1025,9 @@ DSHDEF int ds_linked_list_push_front(ds_linked_list *ll, void *item) {
 defer:
     if (result != 0 && node != NULL) {
         if (node->item != NULL) {
-            DS_FREE(NULL, node->item);
+            DS_FREE(ll->allocator, node->item);
         }
-        DS_FREE(NULL, node);
+        DS_FREE(ll->allocator, node);
     }
     return result;
 }
@@ -1004,9 +1059,9 @@ DSHDEF int ds_linked_list_pop_back(ds_linked_list *ll, void *item) {
 defer:
     if (node != NULL) {
         if (node->item != NULL) {
-            DS_FREE(NULL, node->item);
+            DS_FREE(ll->allocator, node->item);
         }
-        DS_FREE(NULL, node);
+        DS_FREE(ll->allocator, node);
     }
     return result;
 }
@@ -1038,9 +1093,9 @@ DSHDEF int ds_linked_list_pop_front(ds_linked_list *ll, void *item) {
 defer:
     if (node != NULL) {
         if (node->item != NULL) {
-            DS_FREE(NULL, node->item);
+            DS_FREE(ll->allocator, node->item);
         }
-        DS_FREE(NULL, node);
+        DS_FREE(ll->allocator, node);
     }
     return result;
 }
@@ -1055,9 +1110,9 @@ DSHDEF void ds_linked_list_free(ds_linked_list *ll) {
     while (node != NULL) {
         ds_linked_list_node *next = node->next;
         if (node->item != NULL) {
-            DS_FREE(NULL, node->item);
+            DS_FREE(ll->allocator, node->item);
         }
-        DS_FREE(NULL, node);
+        DS_FREE(ll->allocator, node);
         node = next;
     }
     ll->head = NULL;
@@ -1331,7 +1386,7 @@ static void block_write(uint8_t *data, block_t *block) {
 //
 // The start parameter is the start of the memory block to allocate from, and
 // the size parameter is the maximum size of the memory allocator.
-DSHDEF void allocator_init(allocator_t *allocator, uint8_t *start,
+DSHDEF void ds_allocator_init(ds_allocator *allocator, uint8_t *start,
                            uint64_t size) {
     allocator->start = start;
     allocator->prev = NULL;
@@ -1342,7 +1397,7 @@ DSHDEF void allocator_init(allocator_t *allocator, uint8_t *start,
 // Dump the allocator to stdout
 //
 // This function prints the contents of the allocator to stdout.
-DSHDEF void allocator_dump(allocator_t *allocator) {
+DSHDEF void ds_allocator_dump(ds_allocator *allocator) {
     block_t block = {0};
     uint8_t *ptr = allocator->start;
 
@@ -1366,7 +1421,7 @@ DSHDEF void allocator_dump(allocator_t *allocator) {
     }
 }
 
-static int allocator_find_block(allocator_t *allocator, uint64_t size,
+static int allocator_find_block(ds_allocator *allocator, uint64_t size,
                                 block_t *block) {
     if (allocator->prev == NULL) {
         return 0;
@@ -1430,7 +1485,7 @@ static int allocator_find_block(allocator_t *allocator, uint64_t size,
 //
 // This function allocates memory from the allocator. If the allocator is unable
 // to allocate the memory, it returns NULL.
-DSHDEF void *allocator_alloc(allocator_t *allocator, uint64_t size) {
+DSHDEF void *ds_allocator_alloc(ds_allocator *allocator, uint64_t size) {
     block_t block = {0};
     if (allocator_find_block(allocator, size, &block) != 0) {
         return block.data;
@@ -1470,7 +1525,7 @@ DSHDEF void *allocator_alloc(allocator_t *allocator, uint64_t size) {
 //
 // This function frees memory from the allocator. If the pointer is not within
 // the bounds of the allocator, it does nothing.
-DSHDEF void allocator_free(allocator_t *allocator, void *ptr) {
+DSHDEF void ds_allocator_free(ds_allocator *allocator, void *ptr) {
     if ((uint8_t *)ptr > allocator->top || (uint8_t *)ptr < allocator->start) {
         return;
     }

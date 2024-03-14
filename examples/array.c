@@ -1,11 +1,21 @@
+#include <stdint.h>
+#include <stdio.h>
+#define DS_AL_IMPLEMENTATION
 #define DS_DA_IMPLEMENTATION
 #include "../ds.h"
+
+#define MEMORY_SIZE 8192 * sizeof(int) * 2
 
 int main() {
     int result = 0;
 
+    uint8_t data[MEMORY_SIZE];
+
+    ds_allocator allocator;
+    ds_allocator_init(&allocator, data, MEMORY_SIZE);
+
     ds_dynamic_array array;
-    ds_dynamic_array_init(&array, sizeof(int));
+    ds_dynamic_array_init_allocator(&array, sizeof(int), &allocator);
 
     for (int i = 0; i < 10; i++) {
         ds_dynamic_array_append(&array, &i);
