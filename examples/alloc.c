@@ -101,16 +101,67 @@ void allocator_dump(allocator_t *allocator) {
 
 static int allocator_find_block(allocator_t *allocator, uint64_t size,
                                 block_t *block) {
-    (void)allocator;
-    (void)size;
-    (void)block;
+    if (allocator->prev == NULL) {
+        return 0;
+    }
+
+    block_t current = {0};
+    uint8_t *ptr = allocator->start;
+
+    while (ptr < allocator->top) {
+        block_read(ptr, &current);
+
+        if (current.free && current.size >= size + BLOCK_METADATA_SIZE * 2) {
+            uint64_t old_size = current.size;
+            int64_t old_next = current.next;
+
+            block_t split = {0};
+            split.prev = (uint64_t)(ptr - allocator->start);
+            split.next = old_next;
+            split.size = old_size - size - BLOCK_METADATA_SIZE;
+            split.free = 1;
+            split.data = ptr + BLOCK_METADATA_SIZE + size + BLOCK_METADATA_SIZE;
+
+            block_write(ptr + BLOCK_METADATA_SIZE + size, &split);
+
+            *block = current;
+            block->next =
+                (uint64_t)(ptr - allocator->start) + BLOCK_METADATA_SIZE + size;
+            block->size = size;
+            block->free = 0;
+            block->data = ptr + BLOCK_METADATA_SIZE;
+
+            block_write(ptr, block);
+
+            block_t next = {0};
+            block_read(allocator->start + old_next, &next);
+
+            next.prev =
+                (uint64_t)(ptr - allocator->start) + BLOCK_METADATA_SIZE + size;
+
+            block_write(allocator->start + old_next, &next);
+
+            return 1;
+        }
+
+        if (current.free && current.size >= size) {
+            *block = current;
+            block->free = 0;
+
+            block_write(ptr, block);
+
+            return 1;
+        }
+
+        ptr += (current.size + BLOCK_METADATA_SIZE);
+    }
+
     return 0;
 }
 
 void *allocator_alloc(allocator_t *allocator, uint64_t size) {
     block_t block = {0};
     if (allocator_find_block(allocator, size, &block) != 0) {
-        block.free = 0;
         return block.data;
     }
 
@@ -152,6 +203,49 @@ void allocator_free(allocator_t *allocator, void *ptr) {
     block_t block = {0};
     block_read(ptr - BLOCK_METADATA_SIZE, &block);
     block.free = 1;
+
+    if (block.prev != BLOCK_INDEX_UNDEFINED) {
+        block_t prev = {0};
+        block_read(allocator->start + block.prev, &prev);
+
+        if (prev.free) {
+            prev.next = block.next;
+            prev.size += block.size + BLOCK_METADATA_SIZE;
+
+            uint8_t *mptr = allocator->start + block.prev;
+
+            block_t next = {0};
+            block_read(allocator->start + block.next, &next);
+
+            next.prev = (uint64_t)((uint8_t *)mptr - allocator->start);
+
+            block_write(allocator->start + block.next, &next);
+            block_write(allocator->start + block.prev, &prev);
+
+            block = prev;
+            ptr = mptr + BLOCK_METADATA_SIZE;
+        }
+    }
+
+    if (block.next != BLOCK_INDEX_UNDEFINED) {
+        block_t next = {0};
+        block_read(allocator->start + block.next, &next);
+
+        if (next.free) {
+            block_t next_next = {0};
+            block_read(allocator->start + next.next, &next_next);
+
+            uint8_t *mptr = ptr - BLOCK_METADATA_SIZE;
+
+            next_next.prev = (uint64_t)((uint8_t *)mptr - allocator->start);
+
+            block_write(allocator->start + next.next, &next_next);
+
+            block.next = next.next;
+            block.size += next.size + BLOCK_METADATA_SIZE;
+        }
+    }
+
     block_write(ptr - BLOCK_METADATA_SIZE, &block);
 }
 
@@ -162,10 +256,29 @@ int main() {
     allocator_t allocator;
     allocator_init(&allocator, data, ALLOC_SIZE);
 
-    void *ptr = allocator_alloc(&allocator, 128);
-    ptr = allocator_alloc(&allocator, 128);
-    ptr = allocator_alloc(&allocator, 128);
+    void *ptr1 = allocator_alloc(&allocator, 128);
+    void *ptr2 = allocator_alloc(&allocator, 128);
+    void *ptr3 = allocator_alloc(&allocator, 128);
 
+    printf("Expecting 3 blocks (alloc 128, alloc 128, alloc 128)\n");
+    allocator_dump(&allocator);
+
+    allocator_free(&allocator, ptr2);
+
+    printf("\nExpecting 3 blocks, middle one is free (free second block)\n");
+    allocator_dump(&allocator);
+
+    void *ptr4 = allocator_alloc(&allocator, 32);
+    void *ptr5 = allocator_alloc(&allocator, 8);
+
+    printf("\nExpecting 5 blocks, middle one is split (alloc 32, alloc 8)\n");
+    allocator_dump(&allocator);
+
+    allocator_free(&allocator, ptr4);
+    allocator_free(&allocator, ptr5);
+
+    printf(
+        "\nExpecting 3 blocks, middle 2 ones are coalesced (free 2 blocks)\n");
     allocator_dump(&allocator);
 
     return 0;
