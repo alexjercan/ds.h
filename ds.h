@@ -118,8 +118,10 @@ DSHDEF int ds_dynamic_array_get(ds_dynamic_array *da, unsigned int index,
                                 void *item);
 DSHDEF void ds_dynamic_array_get_ref(ds_dynamic_array *da, unsigned int index,
                                      void **item);
-DSHDEF void ds_dynamic_array_copy(ds_dynamic_array *da, ds_dynamic_array *copy);
-DSHDEF void ds_dynamic_array_reverse(ds_dynamic_array *da);
+DSHDEF int ds_dynamic_array_copy(ds_dynamic_array *da, ds_dynamic_array *copy);
+DSHDEF int ds_dynamic_array_reverse(ds_dynamic_array *da);
+DSHDEF int ds_dynamic_array_swap(ds_dynamic_array *da, unsigned int index1,
+                                  unsigned int index2);
 DSHDEF void ds_dynamic_array_free(ds_dynamic_array *da);
 
 // PRIORITY QUEUE
@@ -341,7 +343,7 @@ DSHDEF void ds_hash_table_free(ds_hash_table *ht);
 #endif
 
 #ifndef DS_REALLOC
-static void *ds_realloc(void *a, void *ptr, unsigned int old_sz,
+static inline void *ds_realloc(void *a, void *ptr, unsigned int old_sz,
                         unsigned int new_sz) {
     void *new_ptr = DS_MALLOC(a, new_sz);
     if (new_ptr == NULL) {
@@ -886,33 +888,93 @@ defer:
     return result;
 }
 
+// Get a reference to an item from the dynamic array
 DSHDEF void ds_dynamic_array_get_ref(ds_dynamic_array *da, unsigned int index,
                                      void **item) {
     *item = (char *)da->items + index * da->item_size;
 }
 
-DSHDEF void ds_dynamic_array_copy(ds_dynamic_array *da,
+// Copy the dynamic array to another dynamic array
+//
+// Returns 0 if the array was copied successfully, 1 if the array could not be
+// allocated.
+DSHDEF int ds_dynamic_array_copy(ds_dynamic_array *da,
                                   ds_dynamic_array *copy) {
+    int result = 0;
+
     copy->items = DS_MALLOC(da->allocator, da->capacity * da->item_size);
+    if (copy->items == NULL) {
+        DS_LOG_ERROR("Failed to allocate dynamic array items");
+        return_defer(1);
+    }
+
     copy->item_size = da->item_size;
     copy->count = da->count;
     copy->capacity = da->capacity;
 
     DS_MEMCPY(copy->items, da->items, da->count * da->item_size);
+
+defer:
+    return result;
 }
 
-DSHDEF void ds_dynamic_array_reverse(ds_dynamic_array *da) {
+// Reverse the dynamic array
+//
+// Returns 0 if the array was reversed successfully, 1 if the array could not be
+// allocated.
+DSHDEF int ds_dynamic_array_reverse(ds_dynamic_array *da) {
+    int result = 0;
+
     for (unsigned int i = 0; i < da->count / 2; i++) {
         unsigned int j = da->count - i - 1;
+
         void *temp = DS_MALLOC(da->allocator, da->item_size);
+        if (temp == NULL) {
+            DS_LOG_ERROR("Failed to allocate temporary item");
+            return_defer(1);
+        }
+
         DS_MEMCPY(temp, (char *)da->items + i * da->item_size, da->item_size);
         DS_MEMCPY((char *)da->items + i * da->item_size,
                   (char *)da->items + j * da->item_size, da->item_size);
         DS_MEMCPY((char *)da->items + j * da->item_size, temp, da->item_size);
         DS_FREE(da->allocator, temp);
     }
+
+defer:
+    return result;
 }
 
+// Swap two items in the dynamic array
+//
+// Returns 0 if the items were swapped successfully, 1 if the index is out of
+// bounds or if the temporary item could not be allocated.
+DSHDEF int ds_dynamic_array_swap(ds_dynamic_array *da, unsigned int index1,
+                                  unsigned int index2) {
+    int result = 0;
+
+    if (index1 >= da->count || index2 >= da->count) {
+        DS_LOG_ERROR("Index out of bounds");
+        return_defer(1);
+    }
+
+    void *temp = DS_MALLOC(da->allocator, da->item_size);
+    if (temp == NULL) {
+        DS_LOG_ERROR("Failed to allocate temporary item");
+        return_defer(1);
+    }
+
+    DS_MEMCPY(temp, (char *)da->items + index1 * da->item_size, da->item_size);
+    DS_MEMCPY((char *)da->items + index1 * da->item_size,
+              (char *)da->items + index2 * da->item_size, da->item_size);
+    DS_MEMCPY((char *)da->items + index2 * da->item_size, temp, da->item_size);
+    DS_FREE(da->allocator, temp);
+
+defer:
+    return result;
+}
+
+// Free the dynamic array
 DSHDEF void ds_dynamic_array_free(ds_dynamic_array *da) {
     if (da->items != NULL) {
         DS_FREE(da->allocator, da->items);
@@ -1303,6 +1365,8 @@ DSHDEF unsigned int ds_hash_table_count(ds_hash_table *ht) {
 //
 // Returns 0 if the item was removed successfully, 1 if the item was not found.
 DSHDEF int ds_hash_table_remove(ds_hash_table *ht, const void *key) {
+    (void)ht;
+    (void)key;
     DS_LOG_ERROR("Not implemented");
     return 1;
 }

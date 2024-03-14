@@ -4,7 +4,7 @@
 unsigned int hash(const void *key) {
     unsigned int hash = 0;
     char *k = *(char **)key;
-    for (int i = 0; i < strlen(k); i++) {
+    for (size_t i = 0; i < strlen(k); i++) {
         hash = 31 * hash + k[i];
     }
     return hash;
@@ -48,6 +48,8 @@ int main() {
     } else {
         printf("value: %d\n", value);
     }
+
+    return_defer(0);
 
 defer:
     ds_hash_table_free(&ht);

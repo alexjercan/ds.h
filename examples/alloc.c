@@ -35,5 +35,8 @@ int main() {
         "\nExpecting 3 blocks, middle 2 ones are coalesced (free 2 blocks)\n");
     ds_allocator_dump(&allocator);
 
+    ds_allocator_free(&allocator, ptr1);
+    ds_allocator_free(&allocator, ptr3);
+
     return 0;
 }

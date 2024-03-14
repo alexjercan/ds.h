@@ -77,6 +77,7 @@ int keep_running = 1;
 int task_id_iota = 0;
 
 void handle_shutdown(int sig) {
+    (void)sig;
     DS_LOG_INFO("Shutting down");
     keep_running = 0;
 }
