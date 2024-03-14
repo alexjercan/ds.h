@@ -60,10 +60,9 @@
 
 #include <stdint.h>
 
-// TODO: use allocator in all structures
 // TODO: rework the hash table to actually work
+// TODO: use allocator in all structures
 // TODO: rework the priority queue to use a dynamic array
-// TODO: rework the string builder to use a dynamic array
 
 #ifndef DSHDEF
 #ifdef DSH_STATIC
@@ -86,7 +85,7 @@ typedef struct ds_allocator {
 } ds_allocator;
 
 DSHDEF void ds_allocator_init(ds_allocator *allocator, uint8_t *start,
-                           uint64_t size);
+                              uint64_t size);
 DSHDEF void ds_allocator_dump(ds_allocator *allocator);
 DSHDEF void *ds_allocator_alloc(ds_allocator *allocator, uint64_t size);
 DSHDEF void ds_allocator_free(ds_allocator *allocator, void *ptr);
@@ -121,7 +120,7 @@ DSHDEF void ds_dynamic_array_get_ref(ds_dynamic_array *da, unsigned int index,
 DSHDEF int ds_dynamic_array_copy(ds_dynamic_array *da, ds_dynamic_array *copy);
 DSHDEF int ds_dynamic_array_reverse(ds_dynamic_array *da);
 DSHDEF int ds_dynamic_array_swap(ds_dynamic_array *da, unsigned int index1,
-                                  unsigned int index2);
+                                 unsigned int index2);
 DSHDEF void ds_dynamic_array_free(ds_dynamic_array *da);
 
 // PRIORITY QUEUE
@@ -153,11 +152,11 @@ DSHDEF void ds_priority_queue_free(ds_priority_queue *pq);
 // formatted strings to the string builder, and then build the final string.
 // The string builder will automatically grow as needed.
 typedef struct ds_string_builder {
-        char *items;
-        unsigned int count;
-        unsigned int capacity;
+        ds_dynamic_array items;
 } ds_string_builder;
 
+DSHDEF void ds_string_builder_init_allocator(ds_string_builder *sb,
+                                             struct ds_allocator *allocator);
 DSHDEF void ds_string_builder_init(ds_string_builder *sb);
 DSHDEF int ds_string_builder_append(ds_string_builder *sb, const char *str);
 DSHDEF int ds_string_builder_appendn(ds_string_builder *sb, const char *str,
@@ -257,6 +256,10 @@ DSHDEF void ds_hash_table_free(ds_hash_table *ht);
 #define DS_AL_IMPLEMENTATION
 #endif // DS_IMPLEMENTATION
 
+#ifdef DS_SB_IMPLEMENTATION
+#define DS_DA_IMPLEMENTATION
+#endif // DS_SB_IMPLEMENTATION
+
 #ifdef DS_HT_IMPLEMENTATION
 #define DS_DA_IMPLEMENTATION
 #endif // DS_HT_IMPLEMENTATION
@@ -344,7 +347,7 @@ DSHDEF void ds_hash_table_free(ds_hash_table *ht);
 
 #ifndef DS_REALLOC
 static inline void *ds_realloc(void *a, void *ptr, unsigned int old_sz,
-                        unsigned int new_sz) {
+                               unsigned int new_sz) {
     void *new_ptr = DS_MALLOC(a, new_sz);
     if (new_ptr == NULL) {
         DS_FREE(a, ptr);
@@ -616,11 +619,14 @@ DSHDEF void ds_priority_queue_free(ds_priority_queue *pq) {
 
 #ifdef DS_SB_IMPLEMENTATION
 
+DSHDEF void ds_string_builder_init_allocator(ds_string_builder *sb,
+                                             struct ds_allocator *allocator) {
+    ds_dynamic_array_init_allocator(&sb->items, sizeof(char), allocator);
+}
+
 // Initialize the string builder
 DSHDEF void ds_string_builder_init(ds_string_builder *sb) {
-    sb->items = NULL;
-    sb->count = 0;
-    sb->capacity = 0;
+    ds_dynamic_array_init(&sb->items, sizeof(char));
 }
 
 // Append a formatted string to the string builder
@@ -628,8 +634,7 @@ DSHDEF void ds_string_builder_init(ds_string_builder *sb) {
 // Returns 0 if the string was appended successfully.
 DSHDEF int ds_string_builder_appendn(ds_string_builder *sb, const char *str,
                                      unsigned int len) {
-    ds_da_append_many(sb, str, len);
-    return 0;
+    return ds_dynamic_array_append_many(&sb->items, (void **)str, len);
 }
 
 // Append a formatted string to the string builder
@@ -637,16 +642,14 @@ DSHDEF int ds_string_builder_appendn(ds_string_builder *sb, const char *str,
 // Returns 0 if the string was appended successfully.
 DSHDEF int ds_string_builder_append(ds_string_builder *sb, const char *str) {
     unsigned int str_len = strlen(str);
-    ds_da_append_many(sb, str, str_len);
-    return 0;
+    return ds_dynamic_array_append_many(&sb->items, (void **)str, str_len);
 }
 
 // Append a character to the string builder
 //
 // Returns 0 if the character was appended successfully.
 DSHDEF int ds_string_builder_appendc(ds_string_builder *sb, char chr) {
-    ds_da_append(sb, chr);
-    return 0;
+    return ds_dynamic_array_append(&sb->items, &chr);
 }
 
 // Build the final string from the string builder
@@ -656,14 +659,14 @@ DSHDEF int ds_string_builder_appendc(ds_string_builder *sb, char chr) {
 DSHDEF int ds_string_builder_build(ds_string_builder *sb, char **str) {
     int result = 0;
 
-    *str = DS_MALLOC(NULL, sb->count + 1);
+    *str = DS_MALLOC(NULL, sb->items.count + 1);
     if (*str == NULL) {
         DS_LOG_ERROR("Failed to allocate string");
         return_defer(1);
     }
 
-    DS_MEMCPY(*str, sb->items, sb->count);
-    (*str)[sb->count] = '\0';
+    DS_MEMCPY(*str, (char *)sb->items.items, sb->items.count);
+    (*str)[sb->items.count] = '\0';
 
 defer:
     return result;
@@ -671,12 +674,7 @@ defer:
 
 // Free the string builder
 DSHDEF void ds_string_builder_free(ds_string_builder *sb) {
-    if (sb->items != NULL) {
-        DS_FREE(NULL, sb->items);
-    }
-    sb->items = NULL;
-    sb->count = 0;
-    sb->capacity = 0;
+    ds_dynamic_array_free(&sb->items);
 }
 
 #endif // DS_SB_IMPLEMENTATION
@@ -898,8 +896,7 @@ DSHDEF void ds_dynamic_array_get_ref(ds_dynamic_array *da, unsigned int index,
 //
 // Returns 0 if the array was copied successfully, 1 if the array could not be
 // allocated.
-DSHDEF int ds_dynamic_array_copy(ds_dynamic_array *da,
-                                  ds_dynamic_array *copy) {
+DSHDEF int ds_dynamic_array_copy(ds_dynamic_array *da, ds_dynamic_array *copy) {
     int result = 0;
 
     copy->items = DS_MALLOC(da->allocator, da->capacity * da->item_size);
@@ -950,7 +947,7 @@ defer:
 // Returns 0 if the items were swapped successfully, 1 if the index is out of
 // bounds or if the temporary item could not be allocated.
 DSHDEF int ds_dynamic_array_swap(ds_dynamic_array *da, unsigned int index1,
-                                  unsigned int index2) {
+                                 unsigned int index2) {
     int result = 0;
 
     if (index1 >= da->count || index2 >= da->count) {
@@ -1451,7 +1448,7 @@ static void block_write(uint8_t *data, block_t *block) {
 // The start parameter is the start of the memory block to allocate from, and
 // the size parameter is the maximum size of the memory allocator.
 DSHDEF void ds_allocator_init(ds_allocator *allocator, uint8_t *start,
-                           uint64_t size) {
+                              uint64_t size) {
     allocator->start = start;
     allocator->prev = NULL;
     allocator->top = start;
