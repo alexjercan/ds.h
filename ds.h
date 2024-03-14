@@ -7,22 +7,24 @@
 // use, and it is intended to be used in small to medium-sized projects.
 //
 // Options:
-// - DS_CORE_IMPLEMENTATION: Define this macro in one source file to include the
-// implementation of all the core utilities
 // - DS_IMPLEMENTATION: Define this macro in one source file to include the
 // implementation of all the data structures and utilities
+// - DS_CORE_IMPLEMENTATION: Define this macro in one source file to include the
+// implementation of all the core utilities
 // - DS_PQ_IMPLEMENTATION: Define this macro in one source file to include the
-//  implementation of the priority queue data structure
-//  - DS_SB_IMPLEMENTATION: Define this macro in one source file to include the
-//  implementation of the string builder utility
-//  - DS_SS_IMPLEMENTATION: Define this macro in one source file to include the
-//  implementation of the string slice utility
-//  - DS_DA_IMPLEMENTATION: Define this macro in one source file to include the
-//  implementation of the dynamic array data structure
-//  - DS_LL_IMPLEMENTATION: Define this macro in one source file to include the
-//  implementation of the linked list data structure
-//  - DS_HT_IMPLEMENTATION: Define this macro in one source file to include the
-//  implementation of the hash table data structure
+// implementation of the priority queue data structure
+// - DS_SB_IMPLEMENTATION: Define this macro in one source file to include the
+// implementation of the string builder utility
+// - DS_SS_IMPLEMENTATION: Define this macro in one source file to include the
+// implementation of the string slice utility
+// - DS_DA_IMPLEMENTATION: Define this macro in one source file to include the
+// implementation of the dynamic array data structure
+// - DS_LL_IMPLEMENTATION: Define this macro in one source file to include the
+// implementation of the linked list data structure
+// - DS_HT_IMPLEMENTATION: Define this macro in one source file to include the
+// implementation of the hash table data structure
+// - DS_AL_IMPLEMENTATION: Define this macro in one source file to include the
+// implementation of the allocator utility
 //
 // MEMORY MANAGEMENT
 //
@@ -56,6 +58,8 @@
 #ifndef DS_H
 #define DS_H
 
+#include <stdint.h>
+
 // TODO: use allocator in all structures
 
 #ifndef DSHDEF
@@ -65,6 +69,51 @@
 #define DSHDEF extern
 #endif
 #endif
+
+// ALLOCATOR
+//
+// The allocator is a simple utility to allocate and free memory. You can define
+// the allocator to use when allocating and freeing memory. This can be used in
+// all the other data structures and utilities to use a custom allocator.
+typedef struct allocator {
+        uint8_t *start;
+        uint8_t *prev;
+        uint8_t *top;
+        uint64_t size;
+} allocator_t;
+
+DSHDEF void allocator_init(allocator_t *allocator, uint8_t *start,
+                           uint64_t size);
+DSHDEF void allocator_dump(allocator_t *allocator);
+DSHDEF void *allocator_alloc(allocator_t *allocator, uint64_t size);
+DSHDEF void allocator_free(allocator_t *allocator, void *ptr);
+
+// DYNAMIC ARRAY
+//
+// The dynamic array is a simple array that grows as needed. This is the real
+// implementation of dynamic arrays. The macros from the header file are just
+// quick inline versions of these functions. This implementation is generic and
+// can be used with any type of item, unlike the macros which require you to
+// define the array structure with the items, count and capacity fields.
+typedef struct ds_dynamic_array {
+        void *items;
+        unsigned int item_size;
+        unsigned int count;
+        unsigned int capacity;
+} ds_dynamic_array;
+
+DSHDEF void ds_dynamic_array_init(ds_dynamic_array *da, unsigned int item_size);
+DSHDEF int ds_dynamic_array_append(ds_dynamic_array *da, const void *item);
+DSHDEF int ds_dynamic_array_pop(ds_dynamic_array *da, const void **item);
+DSHDEF int ds_dynamic_array_append_many(ds_dynamic_array *da, void **new_items,
+                                        unsigned int new_items_count);
+DSHDEF int ds_dynamic_array_get(ds_dynamic_array *da, unsigned int index,
+                                void *item);
+DSHDEF void ds_dynamic_array_get_ref(ds_dynamic_array *da, unsigned int index,
+                                     void **item);
+DSHDEF void ds_dynamic_array_copy(ds_dynamic_array *da, ds_dynamic_array *copy);
+DSHDEF void ds_dynamic_array_reverse(ds_dynamic_array *da);
+DSHDEF void ds_dynamic_array_free(ds_dynamic_array *da);
 
 // PRIORITY QUEUE
 //
@@ -124,33 +173,6 @@ DSHDEF int ds_string_slice_tokenize(ds_string_slice *ss, char delimiter,
                                     ds_string_slice *token);
 DSHDEF int ds_string_slice_to_owned(ds_string_slice *ss, char **str);
 DSHDEF void ds_string_slice_free(ds_string_slice *ss);
-
-// DYNAMIC ARRAY
-//
-// The dynamic array is a simple array that grows as needed. This is the real
-// implementation of dynamic arrays. The macros from the header file are just
-// quick inline versions of these functions. This implementation is generic and
-// can be used with any type of item, unlike the macros which require you to
-// define the array structure with the items, count and capacity fields.
-typedef struct ds_dynamic_array {
-        void *items;
-        unsigned int item_size;
-        unsigned int count;
-        unsigned int capacity;
-} ds_dynamic_array;
-
-DSHDEF void ds_dynamic_array_init(ds_dynamic_array *da, unsigned int item_size);
-DSHDEF int ds_dynamic_array_append(ds_dynamic_array *da, const void *item);
-DSHDEF int ds_dynamic_array_pop(ds_dynamic_array *da, const void **item);
-DSHDEF int ds_dynamic_array_append_many(ds_dynamic_array *da, void **new_items,
-                                        unsigned int new_items_count);
-DSHDEF int ds_dynamic_array_get(ds_dynamic_array *da, unsigned int index,
-                                void *item);
-DSHDEF void ds_dynamic_array_get_ref(ds_dynamic_array *da, unsigned int index,
-                                     void **item);
-DSHDEF void ds_dynamic_array_copy(ds_dynamic_array *da, ds_dynamic_array *copy);
-DSHDEF void ds_dynamic_array_reverse(ds_dynamic_array *da);
-DSHDEF void ds_dynamic_array_free(ds_dynamic_array *da);
 
 // (DOUBLY) LINKED LIST
 //
@@ -215,6 +237,7 @@ DSHDEF void ds_hash_table_free(ds_hash_table *ht);
 #define DS_DA_IMPLEMENTATION
 #define DS_LL_IMPLEMENTATION
 #define DS_HT_IMPLEMENTATION
+#define DS_AL_IMPLEMENTATION
 #endif // DS_IMPLEMENTATION
 
 #ifdef DS_HT_IMPLEMENTATION
@@ -223,7 +246,8 @@ DSHDEF void ds_hash_table_free(ds_hash_table *ht);
 
 #if defined(DS_PQ_IMPLEMENTATION) || defined(DS_SB_IMPLEMENTATION) ||          \
     defined(DS_SS_IMPLEMENTATION) || defined(DS_DA_IMPLEMENTATION) ||          \
-    defined(DS_LL_IMPLEMENTATION) || defined(DS_HT_IMPLEMENTATION)
+    defined(DS_LL_IMPLEMENTATION) || defined(DS_HT_IMPLEMENTATION) ||          \
+    defined(DS_AL_IMPLEMENTATION)
 #define DS_CORE_IMPLEMENTATION
 #endif
 
@@ -1241,3 +1265,263 @@ DSHDEF void ds_hash_table_free(ds_hash_table *ht) {
 }
 
 #endif // DS_HT_IMPLEMENTATION
+
+#ifdef DS_AL_IMPLEMENTATION
+
+static void uint64_read_le(uint8_t *data, uint64_t *value) {
+    *value = ((uint64_t)data[0] << 0) | ((uint64_t)data[1] << 8) |
+             ((uint64_t)data[2] << 16) | ((uint64_t)data[3] << 24) |
+             ((uint64_t)data[4] << 32) | ((uint64_t)data[5] << 40) |
+             ((uint64_t)data[6] << 48) | ((uint64_t)data[7] << 56);
+}
+
+static void uint64_write_le(uint8_t *data, uint64_t value) {
+    data[0] = (value >> 0) & 0xff;
+    data[1] = (value >> 8) & 0xff;
+    data[2] = (value >> 16) & 0xff;
+    data[3] = (value >> 24) & 0xff;
+    data[4] = (value >> 32) & 0xff;
+    data[5] = (value >> 40) & 0xff;
+    data[6] = (value >> 48) & 0xff;
+    data[7] = (value >> 56) & 0xff;
+}
+
+static void uint32_read_le(uint8_t *data, uint32_t *value) {
+    *value = ((uint32_t)data[0] << 0) | ((uint32_t)data[1] << 8) |
+             ((uint32_t)data[2] << 16) | ((uint32_t)data[3] << 24);
+}
+
+static void uint32_write_le(uint8_t *data, uint32_t value) {
+    data[0] = (value >> 0) & 0xff;
+    data[1] = (value >> 8) & 0xff;
+    data[2] = (value >> 16) & 0xff;
+    data[3] = (value >> 24) & 0xff;
+}
+
+#define BLOCK_METADATA_SIZE 28
+#define BLOCK_INDEX_UNDEFINED -1
+
+/*
+ * | prev | next | size | free | ... size bytes of data ... |
+ */
+typedef struct block {
+        int64_t prev;  // 8 bytes
+        int64_t next;  // 8 bytes
+        uint64_t size; // 8 bytes
+        uint32_t free; // 4 bytes
+        uint8_t *data; // 8 bytes
+} block_t;
+
+static void block_read(uint8_t *data, block_t *block) {
+    uint64_read_le(data + 0, (uint64_t *)&block->prev);
+    uint64_read_le(data + 8, (uint64_t *)&block->next);
+    uint64_read_le(data + 16, &block->size);
+    uint32_read_le(data + 24, &block->free);
+    block->data = data + BLOCK_METADATA_SIZE;
+}
+
+static void block_write(uint8_t *data, block_t *block) {
+    uint64_write_le(data + 0, block->prev);
+    uint64_write_le(data + 8, block->next);
+    uint64_write_le(data + 16, block->size);
+    uint32_write_le(data + 24, block->free);
+}
+
+// Initialize the allocator
+//
+// The start parameter is the start of the memory block to allocate from, and
+// the size parameter is the maximum size of the memory allocator.
+DSHDEF void allocator_init(allocator_t *allocator, uint8_t *start,
+                           uint64_t size) {
+    allocator->start = start;
+    allocator->prev = NULL;
+    allocator->top = start;
+    allocator->size = size;
+}
+
+// Dump the allocator to stdout
+//
+// This function prints the contents of the allocator to stdout.
+DSHDEF void allocator_dump(allocator_t *allocator) {
+    block_t block = {0};
+    uint8_t *ptr = allocator->start;
+
+    fprintf(stdout, "%*s %*s %*s %*s %*s\n", 14, "", 14, "prev", 14, "next", 14,
+            "size", 14, "free");
+
+    while (ptr < allocator->top) {
+        block_read(ptr, &block);
+
+        uint8_t *prev = (block.prev == BLOCK_INDEX_UNDEFINED)
+                            ? NULL
+                            : allocator->start + block.prev;
+        uint8_t *next = (block.next == BLOCK_INDEX_UNDEFINED)
+                            ? NULL
+                            : allocator->start + block.next;
+
+        fprintf(stdout, "%*p %*p %*p %*lu %*u\n", 14, ptr, 14, prev, 14, next,
+                14, block.size, 14, block.free);
+
+        ptr += (block.size + BLOCK_METADATA_SIZE);
+    }
+}
+
+static int allocator_find_block(allocator_t *allocator, uint64_t size,
+                                block_t *block) {
+    if (allocator->prev == NULL) {
+        return 0;
+    }
+
+    block_t current = {0};
+    uint8_t *ptr = allocator->start;
+
+    while (ptr < allocator->top) {
+        block_read(ptr, &current);
+
+        if (current.free && current.size >= size + BLOCK_METADATA_SIZE * 2) {
+            uint64_t old_size = current.size;
+            int64_t old_next = current.next;
+
+            block_t split = {0};
+            split.prev = (uint64_t)(ptr - allocator->start);
+            split.next = old_next;
+            split.size = old_size - size - BLOCK_METADATA_SIZE;
+            split.free = 1;
+            split.data = ptr + BLOCK_METADATA_SIZE + size + BLOCK_METADATA_SIZE;
+
+            block_write(ptr + BLOCK_METADATA_SIZE + size, &split);
+
+            *block = current;
+            block->next =
+                (uint64_t)(ptr - allocator->start) + BLOCK_METADATA_SIZE + size;
+            block->size = size;
+            block->free = 0;
+            block->data = ptr + BLOCK_METADATA_SIZE;
+
+            block_write(ptr, block);
+
+            block_t next = {0};
+            block_read(allocator->start + old_next, &next);
+
+            next.prev =
+                (uint64_t)(ptr - allocator->start) + BLOCK_METADATA_SIZE + size;
+
+            block_write(allocator->start + old_next, &next);
+
+            return 1;
+        }
+
+        if (current.free && current.size >= size) {
+            *block = current;
+            block->free = 0;
+
+            block_write(ptr, block);
+
+            return 1;
+        }
+
+        ptr += (current.size + BLOCK_METADATA_SIZE);
+    }
+
+    return 0;
+}
+
+// Allocate memory from the allocator
+//
+// This function allocates memory from the allocator. If the allocator is unable
+// to allocate the memory, it returns NULL.
+DSHDEF void *allocator_alloc(allocator_t *allocator, uint64_t size) {
+    block_t block = {0};
+    if (allocator_find_block(allocator, size, &block) != 0) {
+        return block.data;
+    }
+
+    if (allocator->top + size + BLOCK_METADATA_SIZE >
+        allocator->start + allocator->size) {
+        return NULL;
+    }
+
+    block.next = BLOCK_INDEX_UNDEFINED;
+    block.size = size;
+    block.free = 0;
+    block.data = allocator->top + BLOCK_METADATA_SIZE;
+
+    if (allocator->prev == NULL) {
+        block.prev = BLOCK_INDEX_UNDEFINED;
+    } else {
+        block.prev = (uint64_t)(allocator->prev - allocator->start);
+
+        block_t prev = {0};
+        block_read(allocator->prev, &prev);
+        prev.next = (uint64_t)(allocator->top - allocator->start);
+
+        block_write(allocator->prev, &prev);
+    }
+
+    block_write(allocator->top, &block);
+
+    allocator->prev = allocator->top;
+    allocator->top += size + BLOCK_METADATA_SIZE;
+
+    return block.data;
+}
+
+// Free memory from the allocator
+//
+// This function frees memory from the allocator. If the pointer is not within
+// the bounds of the allocator, it does nothing.
+DSHDEF void allocator_free(allocator_t *allocator, void *ptr) {
+    if ((uint8_t *)ptr > allocator->top || (uint8_t *)ptr < allocator->start) {
+        return;
+    }
+
+    block_t block = {0};
+    block_read(ptr - BLOCK_METADATA_SIZE, &block);
+    block.free = 1;
+
+    if (block.prev != BLOCK_INDEX_UNDEFINED) {
+        block_t prev = {0};
+        block_read(allocator->start + block.prev, &prev);
+
+        if (prev.free) {
+            prev.next = block.next;
+            prev.size += block.size + BLOCK_METADATA_SIZE;
+
+            uint8_t *mptr = allocator->start + block.prev;
+
+            block_t next = {0};
+            block_read(allocator->start + block.next, &next);
+
+            next.prev = (uint64_t)((uint8_t *)mptr - allocator->start);
+
+            block_write(allocator->start + block.next, &next);
+            block_write(allocator->start + block.prev, &prev);
+
+            block = prev;
+            ptr = mptr + BLOCK_METADATA_SIZE;
+        }
+    }
+
+    if (block.next != BLOCK_INDEX_UNDEFINED) {
+        block_t next = {0};
+        block_read(allocator->start + block.next, &next);
+
+        if (next.free) {
+            block_t next_next = {0};
+            block_read(allocator->start + next.next, &next_next);
+
+            uint8_t *mptr = ptr - BLOCK_METADATA_SIZE;
+
+            next_next.prev = (uint64_t)((uint8_t *)mptr - allocator->start);
+
+            block_write(allocator->start + next.next, &next_next);
+
+            block.next = next.next;
+            block.size += next.size + BLOCK_METADATA_SIZE;
+        }
+    }
+
+    block_write(ptr - BLOCK_METADATA_SIZE, &block);
+}
+
+#endif // DS_AL_IMPLEMENTATION
