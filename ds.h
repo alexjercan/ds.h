@@ -9,8 +9,6 @@
 // Options:
 // - DS_IMPLEMENTATION: Define this macro in one source file to include the
 // implementation of all the data structures and utilities
-// - DS_CORE_IMPLEMENTATION: Define this macro in one source file to include the
-// implementation of all the core utilities
 // - DS_PQ_IMPLEMENTATION: Define this macro in one source file to include the
 // implementation of the priority queue data structure
 // - DS_SB_IMPLEMENTATION: Define this macro in one source file to include the
@@ -249,39 +247,6 @@ DSHDEF unsigned int ds_hash_table_count(ds_hash_table *ht);
 DSHDEF int ds_hash_table_remove(ds_hash_table *ht, const void *key);
 DSHDEF void ds_hash_table_free(ds_hash_table *ht);
 
-#endif // DS_H
-
-#ifdef DS_IMPLEMENTATION
-#define DS_PQ_IMPLEMENTATION
-#define DS_SB_IMPLEMENTATION
-#define DS_SS_IMPLEMENTATION
-#define DS_DA_IMPLEMENTATION
-#define DS_LL_IMPLEMENTATION
-#define DS_HT_IMPLEMENTATION
-#define DS_AL_IMPLEMENTATION
-#endif // DS_IMPLEMENTATION
-
-#ifdef DS_PQ_IMPLEMENTATION
-#define DS_DA_IMPLEMENTATION
-#endif // DS_PQ_IMPLEMENTATION
-
-#ifdef DS_SB_IMPLEMENTATION
-#define DS_DA_IMPLEMENTATION
-#endif // DS_SB_IMPLEMENTATION
-
-#ifdef DS_HT_IMPLEMENTATION
-#define DS_DA_IMPLEMENTATION
-#endif // DS_HT_IMPLEMENTATION
-
-#if defined(DS_PQ_IMPLEMENTATION) || defined(DS_SB_IMPLEMENTATION) ||          \
-    defined(DS_SS_IMPLEMENTATION) || defined(DS_DA_IMPLEMENTATION) ||          \
-    defined(DS_LL_IMPLEMENTATION) || defined(DS_HT_IMPLEMENTATION) ||          \
-    defined(DS_AL_IMPLEMENTATION)
-#define DS_CORE_IMPLEMENTATION
-#endif
-
-#ifdef DS_CORE_IMPLEMENTATION
-
 // RETURN DEFER
 //
 // The return_defer macro is a simple way to return a value and jump to a label
@@ -514,7 +479,29 @@ static inline void *ds_realloc(void *a, void *ptr, unsigned int old_sz,
         (da)->count += new_items_count;                                        \
     } while (0)
 
-#endif // DS_CORE_IMPLEMENTATION
+#endif // DS_H
+
+#ifdef DS_IMPLEMENTATION
+#define DS_PQ_IMPLEMENTATION
+#define DS_SB_IMPLEMENTATION
+#define DS_SS_IMPLEMENTATION
+#define DS_DA_IMPLEMENTATION
+#define DS_LL_IMPLEMENTATION
+#define DS_HT_IMPLEMENTATION
+#define DS_AL_IMPLEMENTATION
+#endif // DS_IMPLEMENTATION
+
+#ifdef DS_PQ_IMPLEMENTATION
+#define DS_DA_IMPLEMENTATION
+#endif // DS_PQ_IMPLEMENTATION
+
+#ifdef DS_SB_IMPLEMENTATION
+#define DS_DA_IMPLEMENTATION
+#endif // DS_SB_IMPLEMENTATION
+
+#ifdef DS_HT_IMPLEMENTATION
+#define DS_DA_IMPLEMENTATION
+#endif // DS_HT_IMPLEMENTATION
 
 #ifdef DS_PQ_IMPLEMENTATION
 
@@ -1266,8 +1253,8 @@ DSHDEF int ds_hash_table_init(ds_hash_table *ht, unsigned int key_size,
                               unsigned int value_size, unsigned int capacity,
                               unsigned int (*hash)(const void *),
                               int (*compare)(const void *, const void *)) {
-    return ds_hash_table_init_allocator(ht, key_size, value_size, capacity, hash,
-                                       compare, NULL);
+    return ds_hash_table_init_allocator(ht, key_size, value_size, capacity,
+                                        hash, compare, NULL);
 }
 
 // Insert an item into the hash table
