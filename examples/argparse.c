@@ -42,6 +42,13 @@ int main(int argc, char *argv[]) {
                                           .type = ARGUMENT_TYPE_POSITIONAL_REST,
                                           .required = 1,
                                       });
+    ds_argparse_add_argument(&parser, (ds_argparse_options){
+                                          .short_name = 'm',
+                                          .long_name = "module",
+                                          .description = "module name",
+                                          .type = ARGUMENT_TYPE_VALUE_ARRAY,
+                                          .required = 0,
+                                      });
 
     if (ds_argparse_parse(&parser, argc, argv) != 0) {
         return_defer(1);
@@ -52,6 +59,9 @@ int main(int argc, char *argv[]) {
 
     ds_dynamic_array files;
     ds_argparse_get_values(&parser, "files", &files);
+
+    ds_dynamic_array modules;
+    ds_argparse_get_values(&parser, "module", &modules);
 
     if (number) {
         printf("number: %s\n", number);
@@ -64,6 +74,13 @@ int main(int argc, char *argv[]) {
         ds_dynamic_array_get(&files, i, &file);
 
         printf("file: %s\n", file);
+    }
+
+    for (size_t i = 0; i < modules.count; i++) {
+        char *module = NULL;
+        ds_dynamic_array_get(&modules, i, &module);
+
+        printf("module: %s\n", module);
     }
 
 defer:
