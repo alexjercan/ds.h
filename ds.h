@@ -577,6 +577,7 @@ static inline void *ds_realloc(void *a, void *ptr, unsigned int old_sz,
 #define DS_HT_IMPLEMENTATION
 #define DS_AL_IMPLEMENTATION
 #define DS_AP_IMPLEMENTATION
+#define DS_IO_IMPLEMENTATION
 #endif // DS_IMPLEMENTATION
 
 #ifdef DS_IO_IMPLEMENTATION
