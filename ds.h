@@ -329,6 +329,7 @@ DSHDEF void ds_argparse_parser_free(struct ds_argparse_parser *parser);
 
 DSHDEF int ds_io_read_file(const char *path, char **buffer);
 DSHDEF int ds_io_write_file(const char *path, const char *buffer, const char *mode);
+DSHDEF int ds_io_read_binary(const char *filename, char **buffer);
 
 // RETURN DEFER
 //
@@ -2505,6 +2506,59 @@ DSHDEF int ds_io_write_file(const char *filename, const char *buffer, const char
 defer:
     if (filename != NULL && file != NULL)
         fclose(file);
+    return result;
+}
+
+// Read a binary file
+//
+// Reads the contents of a binary file into a buffer.
+//
+// Arguments:
+// - filename: name of the file to read
+// - buffer: pointer to the buffer to store the contents of the file
+//
+// Returns:
+// - the number of bytes read
+DSHDEF int ds_io_read_binary(const char *filename, char **buffer) {
+    int result = 0;
+    unsigned long line_size;
+    FILE *file = NULL;
+    ds_string_builder sb;
+    ds_string_builder_init(&sb);
+
+    if (filename != NULL) {
+        file = fopen(filename, "rb");
+        if (file == NULL) {
+            DS_LOG_ERROR("Failed to open file: %s", filename);
+            return_defer(-1);
+        }
+    } else {
+        file = stdin;
+    }
+
+    char line[LINE_MAX] = {0};
+    do {
+        line_size = fread(line, sizeof(char), LINE_MAX, file);
+
+        if (ds_string_builder_appendn(&sb, line, line_size) != 0) {
+            DS_LOG_ERROR("Failed to append line to string builder");
+            return_defer(-1);
+        }
+
+        memset(line, 0, sizeof(line));
+    } while (line_size > 0);
+
+    if (ds_string_builder_build(&sb, buffer) != 0) {
+        DS_LOG_ERROR("Failed to build string from string builder");
+        return_defer(-1);
+    }
+
+    result = sb.items.count;
+
+defer:
+    if (filename != NULL && file != NULL)
+        fclose(file);
+    ds_string_builder_free(&sb);
     return result;
 }
 
