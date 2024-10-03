@@ -59,9 +59,6 @@
 #ifndef DS_H
 #define DS_H
 
-#include <stdarg.h>
-#include <stdint.h>
-
 #ifndef DSHDEF
 #ifdef DSH_STATIC
 #define DSHDEF static
@@ -76,16 +73,16 @@
 // the allocator to use when allocating and freeing memory. This can be used in
 // all the other data structures and utilities to use a custom allocator.
 typedef struct ds_allocator {
-        uint8_t *start;
-        uint8_t *prev;
-        uint8_t *top;
-        uint64_t size;
+        unsigned char *start;
+        unsigned char *prev;
+        unsigned char *top;
+        unsigned long int size;
 } ds_allocator;
 
-DSHDEF void ds_allocator_init(ds_allocator *allocator, uint8_t *start,
-                              uint64_t size);
+DSHDEF void ds_allocator_init(ds_allocator *allocator, unsigned char *start,
+                              unsigned long int size);
 DSHDEF void ds_allocator_dump(ds_allocator *allocator);
-DSHDEF void *ds_allocator_alloc(ds_allocator *allocator, uint64_t size);
+DSHDEF void *ds_allocator_alloc(ds_allocator *allocator, unsigned long int size);
 DSHDEF void ds_allocator_free(ds_allocator *allocator, void *ptr);
 
 // DYNAMIC ARRAY
@@ -186,10 +183,17 @@ DSHDEF void ds_string_slice_init(ds_string_slice *ss, char *str,
                                  unsigned int len);
 DSHDEF int ds_string_slice_tokenize(ds_string_slice *ss, char delimiter,
                                     ds_string_slice *token);
+DSHDEF int ds_string_slice_take_while_pred(ds_string_slice *ss, int (*predicate)(char), ds_string_slice *token);
+DSHDEF int ds_string_slice_trim_left_ws(ds_string_slice *ss);
+DSHDEF int ds_string_slice_trim_right_ws(ds_string_slice *ss);
 DSHDEF int ds_string_slice_trim_left(ds_string_slice *ss, char chr);
 DSHDEF int ds_string_slice_trim_right(ds_string_slice *ss, char chr);
 DSHDEF int ds_string_slice_trim(ds_string_slice *ss, char chr);
 DSHDEF int ds_string_slice_to_owned(ds_string_slice *ss, char **str);
+DSHDEF int ds_string_slice_starts_with(ds_string_slice *ss, ds_string_slice *prefix);
+DSHDEF int ds_string_slice_starts_with_pred(ds_string_slice *ss, int (*predicate)(char));
+DSHDEF int ds_string_slice_step(ds_string_slice *ss, int count);
+DSHDEF int ds_string_slice_empty(ds_string_slice *ss);
 DSHDEF void ds_string_slice_free(ds_string_slice *ss);
 
 // (DOUBLY) LINKED LIST
@@ -324,6 +328,7 @@ DSHDEF void ds_argparse_parser_free(struct ds_argparse_parser *parser);
 DSHDEF int ds_io_read_file(const char *path, char **buffer);
 DSHDEF int ds_io_write_file(const char *path, const char *buffer, const char *mode);
 DSHDEF int ds_io_read_binary(const char *filename, char **buffer);
+DSHDEF int ds_io_write_binary(const char *filename, char *buffer, unsigned int buffer_len);
 
 // RETURN DEFER
 //
@@ -341,6 +346,8 @@ DSHDEF int ds_io_read_binary(const char *filename, char **buffer);
 #ifndef DS_NO_STDLIB
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
+#include <stdarg.h>
 #endif
 
 #ifndef NULL
@@ -420,6 +427,10 @@ static inline void *ds_realloc(void *a, void *ptr, unsigned int old_sz,
 #error "Must define DS_EXIT when DS_NO_STDLIB is defined"
 #endif
 
+#ifdef DS_NO_STDLIB
+#define DS_NO_STDIO
+#endif
+
 #ifndef DS_NO_STDIO
 #include <stdio.h>
 #endif
@@ -432,6 +443,10 @@ static inline void *ds_realloc(void *a, void *ptr, unsigned int old_sz,
 // TODO: actually do something for vsnprintf
 #if defined(DS_NO_STDIO) && !defined(vsnprintf)
 #define vsnprintf(buffer, size, format, args) 0
+#endif
+
+#if defined(DS_NO_STDIO) && !defined(stdin)
+#define stdin NULL
 #endif
 
 #if defined(DS_NO_STDIO) && !defined(stderr)
@@ -855,6 +870,64 @@ defer:
     return result;
 }
 
+// Build a token by taking from the string slice while the predicate holds true
+//
+// Return 0 if ok. Return 1 if error occured.
+DSHDEF int ds_string_slice_take_while_pred(ds_string_slice *ss, int (*predicate)(char), ds_string_slice *token) {
+    int result = 0;
+
+    if (ss->len == 0 || ss->str == NULL) {
+        return_defer(1);
+    }
+
+    token->str = ss->str;
+    token->len = 0;
+
+    for (unsigned int i = 0; i < ss->len; i++) {
+        if (predicate(ss->str[i]) == 0) {
+            token->len = i;
+            ss->str += i;
+            ss->len -= i;
+            return_defer(0);
+        }
+    }
+
+    token->len = ss->len;
+    ss->str += ss->len;
+    ss->len = 0;
+
+defer:
+    return result;
+}
+
+// Trim the left side of the string slice by whitespaces
+//
+// Returns 0 if the string was trimmed successfully, 1 if the string slice is
+DSHDEF int ds_string_slice_trim_left_ws(ds_string_slice *ss) {
+    int result = 0;
+
+    while (ss->len > 0 && isspace(ss->str[0])) {
+        ss->str++;
+        ss->len--;
+    }
+
+    return result;
+}
+
+
+// Trim the left side of the string slice by whitespaces
+//
+// Returns 0 if the string was trimmed successfully, 1 if the string slice is
+DSHDEF int ds_string_slice_trim_right_ws(ds_string_slice *ss) {
+    int result = 0;
+
+    while (ss->len > 0 && isspace(ss->str[ss->len - 1])) {
+        ss->len--;
+    }
+
+    return result;
+}
+
 // Trim the left side of the string slice by a character
 //
 // Returns 0 if the string was trimmed successfully, 1 if the string slice is
@@ -918,6 +991,32 @@ DSHDEF int ds_string_slice_to_owned(ds_string_slice *ss, char **str) {
 
 defer:
     return result;
+}
+
+// Check if the string slice starts with a specific string given as a char*
+//
+// Returns 1 in case the string slice starts with str. Returns 0 otherwise
+DSHDEF int ds_string_slice_starts_with(ds_string_slice *ss, ds_string_slice *prefix) {
+    return DS_MEMCMP(ss->str, prefix->str, prefix->len) == 0;
+}
+
+// Check if the string slice starts with a char that matches a predicate function
+//
+// Returns 1 if the string slice starts with a predicate. Returns 0 otherwise.
+DSHDEF int ds_string_slice_starts_with_pred(ds_string_slice *ss, int (*predicate)(char)) {
+    return predicate(*ss->str);
+}
+
+// Step the string slice by one character forward
+DSHDEF int ds_string_slice_step(ds_string_slice *ss, int count) {
+    ss->str += count;
+    ss->len -= count;
+
+    return 0;
+}
+
+DSHDEF int ds_string_slice_empty(ds_string_slice *ss) {
+    return *ss->str == '\0';
 }
 
 // Free the string slice
@@ -1530,14 +1629,14 @@ DSHDEF void ds_hashmap_free(ds_hashmap *map) {
 
 #ifdef DS_AL_IMPLEMENTATION
 
-static void uint64_read_le(uint8_t *data, uint64_t *value) {
-    *value = ((uint64_t)data[0] << 0) | ((uint64_t)data[1] << 8) |
-             ((uint64_t)data[2] << 16) | ((uint64_t)data[3] << 24) |
-             ((uint64_t)data[4] << 32) | ((uint64_t)data[5] << 40) |
-             ((uint64_t)data[6] << 48) | ((uint64_t)data[7] << 56);
+static void uint64_read_le(unsigned char *data, unsigned long int *value) {
+    *value = ((unsigned long int)data[0] << 0) | ((unsigned long int)data[1] << 8) |
+             ((unsigned long int)data[2] << 16) | ((unsigned long int)data[3] << 24) |
+             ((unsigned long int)data[4] << 32) | ((unsigned long int)data[5] << 40) |
+             ((unsigned long int)data[6] << 48) | ((unsigned long int)data[7] << 56);
 }
 
-static void uint64_write_le(uint8_t *data, uint64_t value) {
+static void uint64_write_le(unsigned char *data, unsigned long int value) {
     data[0] = (value >> 0) & 0xff;
     data[1] = (value >> 8) & 0xff;
     data[2] = (value >> 16) & 0xff;
@@ -1548,12 +1647,12 @@ static void uint64_write_le(uint8_t *data, uint64_t value) {
     data[7] = (value >> 56) & 0xff;
 }
 
-static void uint32_read_le(uint8_t *data, uint32_t *value) {
-    *value = ((uint32_t)data[0] << 0) | ((uint32_t)data[1] << 8) |
-             ((uint32_t)data[2] << 16) | ((uint32_t)data[3] << 24);
+static void uint32_read_le(unsigned char *data, unsigned int *value) {
+    *value = ((unsigned int)data[0] << 0) | ((unsigned int)data[1] << 8) |
+             ((unsigned int)data[2] << 16) | ((unsigned int)data[3] << 24);
 }
 
-static void uint32_write_le(uint8_t *data, uint32_t value) {
+static void uint32_write_le(unsigned char *data, unsigned int value) {
     data[0] = (value >> 0) & 0xff;
     data[1] = (value >> 8) & 0xff;
     data[2] = (value >> 16) & 0xff;
@@ -1567,22 +1666,22 @@ static void uint32_write_le(uint8_t *data, uint32_t value) {
  * | prev | next | size | free | ... size bytes of data ... |
  */
 typedef struct block {
-        int64_t prev;  // 8 bytes
-        int64_t next;  // 8 bytes
-        uint64_t size; // 8 bytes
-        uint32_t free; // 4 bytes
-        uint8_t *data; // 8 bytes
+        long int prev;  // 8 bytes
+        long int next;  // 8 bytes
+        unsigned long int size; // 8 bytes
+        unsigned int free; // 4 bytes
+        unsigned char *data; // 8 bytes
 } block_t;
 
-static void block_read(uint8_t *data, block_t *block) {
-    uint64_read_le(data + 0, (uint64_t *)&block->prev);
-    uint64_read_le(data + 8, (uint64_t *)&block->next);
+static void block_read(unsigned char *data, block_t *block) {
+    uint64_read_le(data + 0, (unsigned long int *)&block->prev);
+    uint64_read_le(data + 8, (unsigned long int *)&block->next);
     uint64_read_le(data + 16, &block->size);
     uint32_read_le(data + 24, &block->free);
     block->data = data + BLOCK_METADATA_SIZE;
 }
 
-static void block_write(uint8_t *data, block_t *block) {
+static void block_write(unsigned char *data, block_t *block) {
     uint64_write_le(data + 0, block->prev);
     uint64_write_le(data + 8, block->next);
     uint64_write_le(data + 16, block->size);
@@ -1593,8 +1692,8 @@ static void block_write(uint8_t *data, block_t *block) {
 //
 // The start parameter is the start of the memory block to allocate from, and
 // the size parameter is the maximum size of the memory allocator.
-DSHDEF void ds_allocator_init(ds_allocator *allocator, uint8_t *start,
-                              uint64_t size) {
+DSHDEF void ds_allocator_init(ds_allocator *allocator, unsigned char *start,
+                              unsigned long int size) {
     allocator->start = start;
     allocator->prev = NULL;
     allocator->top = start;
@@ -1606,7 +1705,7 @@ DSHDEF void ds_allocator_init(ds_allocator *allocator, uint8_t *start,
 // This function prints the contents of the allocator to stdout.
 DSHDEF void ds_allocator_dump(ds_allocator *allocator) {
     block_t block = {0};
-    uint8_t *ptr = allocator->start;
+    unsigned char *ptr = allocator->start;
 
     fprintf(stdout, "%*s %*s %*s %*s %*s\n", 14, "", 14, "prev", 14, "next", 14,
             "size", 14, "free");
@@ -1614,10 +1713,10 @@ DSHDEF void ds_allocator_dump(ds_allocator *allocator) {
     while (ptr < allocator->top) {
         block_read(ptr, &block);
 
-        uint8_t *prev = (block.prev == BLOCK_INDEX_UNDEFINED)
+        unsigned char *prev = (block.prev == BLOCK_INDEX_UNDEFINED)
                             ? NULL
                             : allocator->start + block.prev;
-        uint8_t *next = (block.next == BLOCK_INDEX_UNDEFINED)
+        unsigned char *next = (block.next == BLOCK_INDEX_UNDEFINED)
                             ? NULL
                             : allocator->start + block.next;
 
@@ -1628,24 +1727,24 @@ DSHDEF void ds_allocator_dump(ds_allocator *allocator) {
     }
 }
 
-static int allocator_find_block(ds_allocator *allocator, uint64_t size,
+static int allocator_find_block(ds_allocator *allocator, unsigned long int size,
                                 block_t *block) {
     if (allocator->prev == NULL) {
         return 0;
     }
 
     block_t current = {0};
-    uint8_t *ptr = allocator->start;
+    unsigned char *ptr = allocator->start;
 
     while (ptr < allocator->top) {
         block_read(ptr, &current);
 
         if (current.free && current.size >= size + BLOCK_METADATA_SIZE * 2) {
-            uint64_t old_size = current.size;
-            int64_t old_next = current.next;
+            unsigned long int old_size = current.size;
+            long int old_next = current.next;
 
             block_t split = {0};
-            split.prev = (uint64_t)(ptr - allocator->start);
+            split.prev = (unsigned long int)(ptr - allocator->start);
             split.next = old_next;
             split.size = old_size - size - BLOCK_METADATA_SIZE;
             split.free = 1;
@@ -1655,7 +1754,7 @@ static int allocator_find_block(ds_allocator *allocator, uint64_t size,
 
             *block = current;
             block->next =
-                (uint64_t)(ptr - allocator->start) + BLOCK_METADATA_SIZE + size;
+                (unsigned long int)(ptr - allocator->start) + BLOCK_METADATA_SIZE + size;
             block->size = size;
             block->free = 0;
             block->data = ptr + BLOCK_METADATA_SIZE;
@@ -1666,7 +1765,7 @@ static int allocator_find_block(ds_allocator *allocator, uint64_t size,
             block_read(allocator->start + old_next, &next);
 
             next.prev =
-                (uint64_t)(ptr - allocator->start) + BLOCK_METADATA_SIZE + size;
+                (unsigned long int)(ptr - allocator->start) + BLOCK_METADATA_SIZE + size;
 
             block_write(allocator->start + old_next, &next);
 
@@ -1692,7 +1791,7 @@ static int allocator_find_block(ds_allocator *allocator, uint64_t size,
 //
 // This function allocates memory from the allocator. If the allocator is unable
 // to allocate the memory, it returns NULL.
-DSHDEF void *ds_allocator_alloc(ds_allocator *allocator, uint64_t size) {
+DSHDEF void *ds_allocator_alloc(ds_allocator *allocator, unsigned long int size) {
     block_t block = {0};
     if (allocator_find_block(allocator, size, &block) != 0) {
         return block.data;
@@ -1711,11 +1810,11 @@ DSHDEF void *ds_allocator_alloc(ds_allocator *allocator, uint64_t size) {
     if (allocator->prev == NULL) {
         block.prev = BLOCK_INDEX_UNDEFINED;
     } else {
-        block.prev = (uint64_t)(allocator->prev - allocator->start);
+        block.prev = (unsigned long int)(allocator->prev - allocator->start);
 
         block_t prev = {0};
         block_read(allocator->prev, &prev);
-        prev.next = (uint64_t)(allocator->top - allocator->start);
+        prev.next = (unsigned long int)(allocator->top - allocator->start);
 
         block_write(allocator->prev, &prev);
     }
@@ -1733,7 +1832,7 @@ DSHDEF void *ds_allocator_alloc(ds_allocator *allocator, uint64_t size) {
 // This function frees memory from the allocator. If the pointer is not within
 // the bounds of the allocator, it does nothing.
 DSHDEF void ds_allocator_free(ds_allocator *allocator, void *ptr) {
-    if ((uint8_t *)ptr > allocator->top || (uint8_t *)ptr < allocator->start) {
+    if ((unsigned char *)ptr > allocator->top || (unsigned char *)ptr < allocator->start) {
         return;
     }
 
@@ -1749,12 +1848,12 @@ DSHDEF void ds_allocator_free(ds_allocator *allocator, void *ptr) {
             prev.next = block.next;
             prev.size += block.size + BLOCK_METADATA_SIZE;
 
-            uint8_t *mptr = allocator->start + block.prev;
+            unsigned char *mptr = allocator->start + block.prev;
 
             block_t next = {0};
             block_read(allocator->start + block.next, &next);
 
-            next.prev = (uint64_t)((uint8_t *)mptr - allocator->start);
+            next.prev = (unsigned long int)((unsigned char *)mptr - allocator->start);
 
             block_write(allocator->start + block.next, &next);
             block_write(allocator->start + block.prev, &prev);
@@ -1772,9 +1871,9 @@ DSHDEF void ds_allocator_free(ds_allocator *allocator, void *ptr) {
             block_t next_next = {0};
             block_read(allocator->start + next.next, &next_next);
 
-            uint8_t *mptr = ptr - BLOCK_METADATA_SIZE;
+            unsigned char *mptr = ptr - BLOCK_METADATA_SIZE;
 
-            next_next.prev = (uint64_t)((uint8_t *)mptr - allocator->start);
+            next_next.prev = (unsigned long int)((unsigned char *)mptr - allocator->start);
 
             block_write(allocator->start + next.next, &next_next);
 
@@ -1862,7 +1961,7 @@ static int argparse_validate_parser(ds_argparse_parser *parser) {
     int found_optional_positional = 0;
     int found_positional_rest = 0;
 
-    for (size_t i = 0; i < parser->arguments.count; i++) {
+    for (unsigned int i = 0; i < parser->arguments.count; i++) {
         ds_argument *item = NULL;
         ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item);
 
@@ -1890,7 +1989,7 @@ static int argparse_validate_parser(ds_argparse_parser *parser) {
         }
 
         if (options.short_name == '\0' && options.long_name == NULL) {
-            DS_LOG_ERROR("no short_name and long_name for argument %zu", i);
+            DS_LOG_ERROR("no short_name and long_name for argument %du", i);
             result = 1;
         }
         if (options.type == ARGUMENT_TYPE_FLAG && options.required == 1) {
@@ -1912,7 +2011,7 @@ static int argparse_validate_parser(ds_argparse_parser *parser) {
 static int argparse_post_validate_parser(ds_argparse_parser *parser) {
     int result = 0;
 
-    for (size_t i = 0; i < parser->arguments.count; i++) {
+    for (unsigned int i = 0; i < parser->arguments.count; i++) {
         ds_argument *item = NULL;
         ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item);
 
@@ -1965,7 +2064,7 @@ static ds_argument *argparse_get_option_arg(ds_argparse_parser *parser,
 
     ds_argument *arg = NULL;
 
-    for (size_t j = 0; j < parser->arguments.count; j++) {
+    for (unsigned int j = 0; j < parser->arguments.count; j++) {
         ds_argument *item = NULL;
         ds_dynamic_array_get_ref(&parser->arguments, j, (void **)&item);
 
@@ -1994,7 +2093,7 @@ static ds_argument *argparse_get_positional_arg(ds_argparse_parser *parser,
     }
 
     ds_argument *arg = NULL;
-    for (size_t j = 0; j < parser->arguments.count; j++) {
+    for (unsigned int j = 0; j < parser->arguments.count; j++) {
         ds_argument *item = NULL;
         ds_dynamic_array_get_ref(&parser->arguments, j, (void **)&item);
 
@@ -2036,12 +2135,12 @@ int ds_argparse_parse(ds_argparse_parser *parser, int argc, char *argv[]) {
 
         if (strcmp(name, "-h") == 0 || strcmp(name, "--help") == 0) {
             ds_argparse_print_help(parser);
-            exit(0);
+            DS_EXIT(0);
         }
 
         if (strcmp(name, "-v") == 0 || strcmp(name, "--version") == 0) {
             ds_argparse_print_version(parser);
-            exit(0);
+            DS_EXIT(0);
         }
 
         if (name[0] == '-') {
@@ -2138,7 +2237,7 @@ defer:
 // Returns:
 // - value of the argument
 char *ds_argparse_get_value(ds_argparse_parser *parser, char *long_name) {
-    for (size_t i = 0; i < parser->arguments.count; i++) {
+    for (unsigned int i = 0; i < parser->arguments.count; i++) {
         ds_argument *item = NULL;
         ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item);
 
@@ -2166,7 +2265,7 @@ char *ds_argparse_get_value(ds_argparse_parser *parser, char *long_name) {
 // Returns:
 // - value of the flag argument
 unsigned int ds_argparse_get_flag(ds_argparse_parser *parser, char *long_name) {
-    for (size_t i = 0; i < parser->arguments.count; i++) {
+    for (unsigned int i = 0; i < parser->arguments.count; i++) {
         ds_argument *item = NULL;
         ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item);
 
@@ -2184,7 +2283,7 @@ unsigned int ds_argparse_get_flag(ds_argparse_parser *parser, char *long_name) {
 
 DSHDEF int ds_argparse_get_values(struct ds_argparse_parser *parser,
                                   char *long_name, ds_dynamic_array *values) {
-    for (size_t i = 0; i < parser->arguments.count; i++) {
+    for (unsigned int i = 0; i < parser->arguments.count; i++) {
         ds_argument *item = NULL;
         ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item);
 
@@ -2211,7 +2310,7 @@ DSHDEF int ds_argparse_get_values(struct ds_argparse_parser *parser,
 void ds_argparse_print_help(ds_argparse_parser *parser) {
     fprintf(stdout, "usage: %s [options]", parser->name);
 
-    for (size_t i = 0; i < parser->arguments.count; i++) {
+    for (unsigned int i = 0; i < parser->arguments.count; i++) {
         ds_argument *item = NULL;
         ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item);
 
@@ -2222,7 +2321,7 @@ void ds_argparse_print_help(ds_argparse_parser *parser) {
         }
     }
 
-    for (size_t i = 0; i < parser->arguments.count; i++) {
+    for (unsigned int i = 0; i < parser->arguments.count; i++) {
         ds_argument *item = NULL;
         ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item);
 
@@ -2237,7 +2336,7 @@ void ds_argparse_print_help(ds_argparse_parser *parser) {
         }
     }
 
-    for (size_t i = 0; i < parser->arguments.count; i++) {
+    for (unsigned int i = 0; i < parser->arguments.count; i++) {
         ds_argument *item = NULL;
         ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item);
 
@@ -2254,7 +2353,7 @@ void ds_argparse_print_help(ds_argparse_parser *parser) {
         }
     }
 
-    for (size_t i = 0; i < parser->arguments.count; i++) {
+    for (unsigned int i = 0; i < parser->arguments.count; i++) {
         ds_argument *item = NULL;
         ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item);
 
@@ -2274,7 +2373,7 @@ void ds_argparse_print_help(ds_argparse_parser *parser) {
     fprintf(stdout, "\n");
     fprintf(stdout, "options:\n");
 
-    for (size_t i = 0; i < parser->arguments.count; i++) {
+    for (unsigned int i = 0; i < parser->arguments.count; i++) {
         ds_argument *item = NULL;
         ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item);
 
@@ -2337,7 +2436,7 @@ void ds_argparse_print_version(ds_argparse_parser *parser) {
 //
 // Arguments:
 // - parser: argument parser
-void ds_argparse_free(ds_argparse_parser *parser) {
+void ds_argparse_parser_free(ds_argparse_parser *parser) {
     ds_dynamic_array_free(&parser->arguments);
 }
 
@@ -2502,6 +2601,42 @@ defer:
     if (filename != NULL && file != NULL)
         fclose(file);
     ds_string_builder_free(&sb);
+    return result;
+}
+
+// Write a binary file
+//
+// Writes the contents of a buffer into a binary file.
+//
+// Arguments:
+// - filename: name of the file to read
+// - buffer: pointer to the buffer to use on write
+// - buffer_len: the size of the buffer
+//
+// Returns:
+// - the number of bytes written
+DSHDEF int ds_io_write_binary(const char *filename, char *buffer, unsigned int buffer_len) {
+    int result = 0;
+    unsigned long buffer_size;
+    FILE *file = NULL;
+
+    if (filename != NULL) {
+        file = fopen(filename, "wb");
+        if (file == NULL) {
+            DS_LOG_ERROR("Failed to open file: %s", filename);
+            return_defer(-1);
+        }
+    } else {
+        file = stdout;
+    }
+
+    buffer_size = fwrite(buffer, sizeof(char), buffer_len, file);
+    result = buffer_size;
+
+defer:
+    if (filename != NULL && file != NULL)
+        fclose(file);
+
     return result;
 }
 

@@ -84,6 +84,6 @@ int main(int argc, char *argv[]) {
     }
 
 defer:
-    ds_argparse_free(&parser);
+    ds_argparse_parser_free(&parser);
     return result;
 }

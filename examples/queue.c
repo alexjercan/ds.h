@@ -7,7 +7,7 @@
 int main() {
     int result = 0;
 
-    uint8_t data[MEMORY_SIZE];
+    unsigned char data[MEMORY_SIZE];
 
     ds_allocator allocator;
     ds_allocator_init(&allocator, data, MEMORY_SIZE);
