@@ -249,7 +249,7 @@ DSHDEF int ds_hashmap_init(ds_hashmap *map, unsigned int capacity,
 DSHDEF int ds_hashmap_insert(ds_hashmap *map, ds_hashmap_kv *kv);
 DSHDEF int ds_hashmap_get(ds_hashmap *map, ds_hashmap_kv *kv);
 DSHDEF int ds_hashmap_delete(ds_hashmap *map, const void *key);
-DSHDEF int ds_hashmap_free(ds_hashmap *map);
+DSHDEF void ds_hashmap_free(ds_hashmap *map);
 
 // ARGUMENT PARSER
 //
@@ -1417,7 +1417,7 @@ DSHDEF int ds_hashmap_init_allocator(ds_hashmap *map, unsigned int capacity,
         return_defer(1);
     }
 
-    for (int i = 0; i < map->capacity; i++) {
+    for (unsigned int i = 0; i < map->capacity; i++) {
         ds_dynamic_array_init_allocator(map->buckets + i, sizeof(ds_hashmap_kv), map->allocator);
     }
 
@@ -1516,19 +1516,14 @@ defer:
 }
 
 // Free the hashmap (this does not free the values or the keys)
-DSHDEF int ds_hashmap_free(ds_hashmap *map) {
-    int result = 0;
-
-    for (int i = 0; i < map->capacity; i++) {
+DSHDEF void ds_hashmap_free(ds_hashmap *map) {
+    for (unsigned int i = 0; i < map->capacity; i++) {
         ds_dynamic_array_free(map->buckets + i);
     }
 
     if (map->buckets != NULL) {
         DS_FREE(map->allocator, map->buckets);
     }
-
-defer:
-    return result;
 }
 
 #endif // DS_HM_IMPLEMENTATION

@@ -1,8 +1,6 @@
 #define DS_SB_IMPLEMENTATION
 #include "../ds.h"
 
-#define LINE_MAX 2048
-
 int read_file(const char *filename, char **buffer) {
     int result = 0;
 

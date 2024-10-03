@@ -9,7 +9,6 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-#define LINE_MAX 1024
 #define PORT 8080
 
 struct task {

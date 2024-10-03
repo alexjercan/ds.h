@@ -8,7 +8,7 @@
 unsigned int my_hash(const void *key) {
     unsigned int hash = 0;
     char *name = (char *)key;
-    for (int i = 0; i < strlen(name); i++) {
+    for (unsigned int i = 0; i < strlen(name); i++) {
         hash = 31 * hash + name[i];
     }
     return hash % MAX_CAPACITY;
@@ -19,12 +19,12 @@ int my_compare(const void *k1, const void *k2) {
 }
 
 void my_map_print(ds_hashmap map) {
-    for (int i = 0; i < map.capacity; i++) {
+    for (unsigned int i = 0; i < map.capacity; i++) {
         if (map.buckets[i].count == 0) {
             continue;
         }
 
-        for (int j = 0; j < map.buckets[i].count; j++) {
+        for (unsigned int j = 0; j < map.buckets[i].count; j++) {
             ds_hashmap_kv kv = {0};
             ds_dynamic_array_get(&map.buckets[i], j, &kv);
 

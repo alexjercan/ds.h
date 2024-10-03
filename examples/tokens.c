@@ -1,8 +1,6 @@
 #define DS_SS_IMPLEMENTATION
 #include "../ds.h"
 
-#define LINE_MAX 2048
-
 int main() {
     int result = 0;
 
