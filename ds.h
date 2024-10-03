@@ -1,6 +1,6 @@
 // DOCUMENTATION
 //
-// DS.H
+// DS.H https://github.com/alexjercan/pdf-parser-c/blob/master/ds.h
 //
 // This is a single-header library that provides a set of data structures and
 // utilities for C programs. The library is designed to be simple and easy to
