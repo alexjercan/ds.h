@@ -19,8 +19,8 @@
 // implementation of the dynamic array data structure
 // - DS_LL_IMPLEMENTATION: Define this macro in one source file to include the
 // implementation of the linked list data structure
-// - DS_HT_IMPLEMENTATION: Define this macro in one source file to include the
-// implementation of the hash table data structure
+// - DS_HM_IMPLEMENTATION: Define this macro in one source file to include the
+// implementation of the hash map data structure
 // - DS_AL_IMPLEMENTATION: Define this macro in one source file to include the
 // implementation of the allocator utility and set the allocator to use
 // - DS_AP_IMPLEMENTATION: Define this macro in one source file to include the
@@ -61,8 +61,6 @@
 
 #include <stdarg.h>
 #include <stdint.h>
-
-// TODO: rework the hash table to actually work
 
 #ifndef DSHDEF
 #ifdef DSH_STATIC
@@ -123,6 +121,7 @@ DSHDEF void ds_dynamic_array_sort(ds_dynamic_array *da,
 DSHDEF int ds_dynamic_array_reverse(ds_dynamic_array *da);
 DSHDEF int ds_dynamic_array_swap(ds_dynamic_array *da, unsigned int index1,
                                  unsigned int index2);
+DSHDEF int ds_dynamic_array_delete(ds_dynamic_array *da, unsigned int index);
 DSHDEF void ds_dynamic_array_free(ds_dynamic_array *da);
 
 // PRIORITY QUEUE
@@ -134,7 +133,6 @@ DSHDEF void ds_dynamic_array_free(ds_dynamic_array *da);
 // the first item, and 0 if the items have the same priority.
 typedef struct ds_priority_queue {
         ds_dynamic_array items;
-
         int (*compare)(const void *, const void *);
 } ds_priority_queue;
 
@@ -222,40 +220,36 @@ DSHDEF int ds_linked_list_pop_front(ds_linked_list *ll, void *item);
 DSHDEF int ds_linked_list_empty(ds_linked_list *ll);
 DSHDEF void ds_linked_list_free(ds_linked_list *ll);
 
-// HASH TABLE
+// HASH MAP
 //
-// The hash table is a simple table that uses a hash function to store and
-// retrieve items. The hash table uses separate chaining to handle collisions.
+// The hash map is a simple table that uses a hash function to store and
+// retrieve items. The hash map uses buckets to handle collisions.
 // You can define the hash and compare functions to use when inserting and
 // retrieving items.
-typedef struct ds_hash_table {
-        struct ds_allocator *allocator;
-        ds_dynamic_array *keys;
-        ds_dynamic_array *values;
-        unsigned int key_size;
-        unsigned int value_size;
-        unsigned int capacity;
-        unsigned int (*hash)(const void *);
-        int (*compare)(const void *, const void *);
-} ds_hash_table;
+typedef struct ds_hashmap_kv {
+    void *key;
+    void *value;
+} ds_hashmap_kv;
 
-DSHDEF int ds_hash_table_init_allocator(
-    ds_hash_table *ht, unsigned int key_size, unsigned int value_size,
-    unsigned int capacity, unsigned int (*hash)(const void *),
-    int (*compare)(const void *, const void *), struct ds_allocator *allocator);
-DSHDEF int ds_hash_table_init(ds_hash_table *ht, unsigned int key_size,
-                              unsigned int value_size, unsigned int capacity,
+typedef struct ds_hashmap {
+    struct ds_allocator *allocator;
+    ds_dynamic_array *buckets; /* ds_hashmap_kv */
+    unsigned int capacity;
+    unsigned int (*hash)(const void *);
+    int (*compare)(const void *, const void *);
+} ds_hashmap;
+
+DSHDEF int ds_hashmap_init_allocator(ds_hashmap *map, unsigned int capacity,
+                              unsigned int (*hash)(const void *),
+                              int (*compare)(const void *, const void *),
+                              ds_allocator *allocator);
+DSHDEF int ds_hashmap_init(ds_hashmap *map, unsigned int capacity,
                               unsigned int (*hash)(const void *),
                               int (*compare)(const void *, const void *));
-DSHDEF int ds_hash_table_insert(ds_hash_table *ht, const void *key,
-                                void *value);
-DSHDEF int ds_hash_table_has(ds_hash_table *ht, const void *key);
-DSHDEF int ds_hash_table_get(ds_hash_table *ht, const void *key, void *value);
-DSHDEF int ds_hash_table_get_ref(ds_hash_table *ht, const void *key,
-                                 void **value);
-DSHDEF unsigned int ds_hash_table_count(ds_hash_table *ht);
-DSHDEF int ds_hash_table_remove(ds_hash_table *ht, const void *key);
-DSHDEF void ds_hash_table_free(ds_hash_table *ht);
+DSHDEF int ds_hashmap_insert(ds_hashmap *map, ds_hashmap_kv *kv);
+DSHDEF int ds_hashmap_get(ds_hashmap *map, ds_hashmap_kv *kv);
+DSHDEF int ds_hashmap_delete(ds_hashmap *map, const void *key);
+DSHDEF int ds_hashmap_free(ds_hashmap *map);
 
 // ARGUMENT PARSER
 //
@@ -575,7 +569,7 @@ static inline void *ds_realloc(void *a, void *ptr, unsigned int old_sz,
 #define DS_SS_IMPLEMENTATION
 #define DS_DA_IMPLEMENTATION
 #define DS_LL_IMPLEMENTATION
-#define DS_HT_IMPLEMENTATION
+#define DS_HM_IMPLEMENTATION
 #define DS_AL_IMPLEMENTATION
 #define DS_AP_IMPLEMENTATION
 #define DS_IO_IMPLEMENTATION
@@ -593,9 +587,9 @@ static inline void *ds_realloc(void *a, void *ptr, unsigned int old_sz,
 #define DS_DA_IMPLEMENTATION
 #endif // DS_SB_IMPLEMENTATION
 
-#ifdef DS_HT_IMPLEMENTATION
+#ifdef DS_HM_IMPLEMENTATION
 #define DS_DA_IMPLEMENTATION
-#endif // DS_HT_IMPLEMENTATION
+#endif // DS_HM_IMPLEMENTATION
 
 #ifdef DS_AP_IMPLEMENTATION
 #define DS_DA_IMPLEMENTATION
@@ -1093,6 +1087,9 @@ defer:
     return result;
 }
 
+// Sort the dynamic array
+//
+// This uses the qsort algorithm
 DSHDEF void ds_dynamic_array_sort(ds_dynamic_array *da,
                                   int (*compare)(const void *, const void *)) {
     qsort(da->items, da->count, da->item_size, compare);
@@ -1155,6 +1152,35 @@ DSHDEF int ds_dynamic_array_swap(ds_dynamic_array *da, unsigned int index1,
     DS_MEMCPY(index2_item, temp, da->item_size);
 
     DS_FREE(da->allocator, temp);
+
+defer:
+    return result;
+}
+
+// Delete an item from the dynamic array
+//
+// Returns 0 in case of succsess. Returns 1 if the index is out of bounds
+DSHDEF int ds_dynamic_array_delete(ds_dynamic_array *da, unsigned int index) {
+    int result = 0;
+
+    if (index >= da->count) {
+        DS_LOG_ERROR("Index out of bounds");
+        return_defer(1);
+    }
+
+    unsigned int n = da->count - index - 1;
+
+    if (n > 0) {
+        void *dest = NULL;
+        ds_dynamic_array_get_ref(da, index, &dest);
+
+        void *src = NULL;
+        ds_dynamic_array_get_ref(da, index + 1, &src);
+
+        DS_MEMCPY(dest, src, n * da->item_size);
+    }
+
+    da->count -= 1;
 
 defer:
     return result;
@@ -1370,102 +1396,58 @@ DSHDEF void ds_linked_list_free(ds_linked_list *ll) {
 
 #endif // DS_ST_IMPLEMENTATION
 
-#ifdef DS_HT_IMPLEMENTATION
+#ifdef DS_HM_IMPLEMENTATION
 
-// Initialize the hash table with a custom allocator
-DSHDEF int
-ds_hash_table_init_allocator(ds_hash_table *ht, unsigned int key_size,
-                             unsigned int value_size, unsigned int capacity,
-                             unsigned int (*hash)(const void *),
-                             int (*compare)(const void *, const void *),
-                             struct ds_allocator *allocator) {
+// Initialize the hashmap using an allocator
+//
+// Returns 0 if the initialization was succsess. Returns 1 if it failed to
+// allocate the hashmap
+DSHDEF int ds_hashmap_init_allocator(ds_hashmap *map, unsigned int capacity,
+                              unsigned int (*hash)(const void *),
+                              int (*compare)(const void *, const void *),
+                              ds_allocator *allocator) {
     int result = 0;
 
-    ht->allocator = allocator;
+    map->allocator = allocator;
+    map->capacity = capacity;
 
-    ht->keys = DS_MALLOC(ht->allocator, capacity * sizeof(ds_dynamic_array));
-    if (ht->keys == NULL) {
-        DS_LOG_ERROR("Failed to allocate hash table keys");
+    map->buckets = DS_MALLOC(map->allocator, capacity * sizeof(ds_dynamic_array));
+    if (map->buckets == NULL) {
+        DS_LOG_ERROR("Failed to allocate hashmap buckets");
         return_defer(1);
     }
 
-    ht->values = DS_MALLOC(ht->allocator, capacity * sizeof(ds_dynamic_array));
-    if (ht->values == NULL) {
-        DS_LOG_ERROR("Failed to allocate hash table values");
-        return_defer(1);
+    for (int i = 0; i < map->capacity; i++) {
+        ds_dynamic_array_init_allocator(map->buckets + i, sizeof(ds_hashmap_kv), map->allocator);
     }
 
-    for (unsigned int i = 0; i < capacity; i++) {
-        ds_dynamic_array_init(ht->keys + i, key_size);
-        ds_dynamic_array_init(ht->values + i, value_size);
-    }
-
-    ht->key_size = key_size;
-    ht->value_size = value_size;
-    ht->capacity = capacity;
-
-    ht->hash = hash;
-    ht->compare = compare;
+    map->hash = hash;
+    map->compare = compare;
 
 defer:
-    if (result != 0) {
-        if (ht->keys != NULL) {
-            DS_FREE(NULL, ht->keys);
-        }
-        if (ht->values != NULL) {
-            DS_FREE(NULL, ht->values);
-        }
-    }
     return result;
 }
 
-// Initialize the hash table
+// Initialize the hashmap
 //
-// The key_size and value_size parameters are the size of each key and value in
-// the table. The capacity parameter is the initial capacity of the table. The
-// hash and compare parameters are the hash and compare functions to use when
-// inserting and retrieving items.
-DSHDEF int ds_hash_table_init(ds_hash_table *ht, unsigned int key_size,
-                              unsigned int value_size, unsigned int capacity,
+// Returns 0 if the initialization was succsess. Returns 1 if it failed to
+// allocate the hashmap
+DSHDEF int ds_hashmap_init(ds_hashmap *map, unsigned int capacity,
                               unsigned int (*hash)(const void *),
                               int (*compare)(const void *, const void *)) {
-    return ds_hash_table_init_allocator(ht, key_size, value_size, capacity,
-                                        hash, compare, NULL);
+    return ds_hashmap_init_allocator(map, capacity, hash, compare, NULL);
 }
 
-// Insert an item into the hash table
+// Insert a key value pair into the hashmap
 //
-// Returns 0 if the item was inserted successfully, 1 if the item could not be
-// inserted.
-DSHDEF int ds_hash_table_insert(ds_hash_table *ht, const void *key,
-                                void *value) {
+// Returns 0 for succsess. Returns 1 if it failed to add the item
+DSHDEF int ds_hashmap_insert(ds_hashmap *map, ds_hashmap_kv *kv) {
     int result = 0;
 
-    unsigned int index = ht->hash(key) % ht->capacity;
+    unsigned int index = map->hash(kv->key) % map->capacity;
 
-    ds_dynamic_array *keys = ht->keys + index;
-    ds_dynamic_array *values = ht->values + index;
-
-    for (unsigned int i = 0; i < keys->count; i++) {
-        void *k = NULL;
-        ds_dynamic_array_get_ref(keys, i, &k);
-
-        if (ht->compare(k, key) == 0) {
-            void *v = NULL;
-            ds_dynamic_array_get_ref(values, i, &v);
-
-            DS_MEMCPY(v, value, ht->value_size);
-            return_defer(0);
-        }
-    }
-
-    if (ds_dynamic_array_append(keys, key) != 0) {
-        DS_LOG_ERROR("Failed to append key to hash table");
-        return_defer(1);
-    }
-
-    if (ds_dynamic_array_append(values, value) != 0) {
-        DS_LOG_ERROR("Failed to append value to hash table");
+    if (ds_dynamic_array_append(map->buckets + index, kv) != 0) {
+        DS_LOG_ERROR("Failed to insert item into bucket");
         return_defer(1);
     }
 
@@ -1473,117 +1455,83 @@ defer:
     return result;
 }
 
-// Check if the hash table has an item with the given key
+// Get an item from the hashmap using the key
 //
-// Returns 1 if the item was found, 0 if the item was not found.
-DSHDEF int ds_hash_table_has(ds_hash_table *ht, const void *key) {
-    unsigned int index = ht->hash(key) % ht->capacity;
-
-    ds_dynamic_array *keys = ht->keys + index;
-
-    for (unsigned int i = 0; i < keys->count; i++) {
-        void *k = NULL;
-        ds_dynamic_array_get_ref(keys, i, &k);
-
-        if (ht->compare(k, key) == 0) {
-            return 1;
-        }
-    }
-
-    return 0;
-}
-
-// Get an item from the hash table
-//
-// Returns 0 if the item was retrieved successfully, 1 if the item was not
-// found.
-DSHDEF int ds_hash_table_get(ds_hash_table *ht, const void *key, void *value) {
+// Returns 0 if it found the item. Returns 1 in case of an error
+DSHDEF int ds_hashmap_get(ds_hashmap *map, ds_hashmap_kv *kv) {
     int result = 0;
+    int found = 0;
 
-    unsigned int index = ht->hash(key) % ht->capacity;
+    unsigned int index = map->hash(kv->key) % map->capacity;
+    ds_dynamic_array *bucket = map->buckets + index;
 
-    ds_dynamic_array *keys = ht->keys + index;
-    ds_dynamic_array *values = ht->values + index;
+    for (int i = 0; bucket->count; i++) {
+        ds_hashmap_kv tmp = {0};
+        ds_dynamic_array_get(bucket, i, &tmp);
 
-    for (unsigned int i = 0; i < keys->count; i++) {
-        void *k = NULL;
-        ds_dynamic_array_get_ref(keys, i, &k);
-
-        if (ht->compare(k, key) == 0) {
-            ds_dynamic_array_get(values, i, value);
-            return_defer(0);
+        if (map->compare(kv->key, tmp.key) == 0) {
+            kv->value = tmp.value;
+            found = 1;
+            break;
         }
     }
 
-    return_defer(1);
+    if (found == 0) {
+        DS_LOG_ERROR("Failed to find item in hashmap");
+        return_defer(1);
+    }
 
 defer:
     return result;
 }
 
-// Get a reference to an item from the hash table
+// Delete a key from the hashmap (this does not free the memory)
 //
-// Returns 0 if the item was retrieved successfully, 1 if the item was not
-// found.
-DSHDEF int ds_hash_table_get_ref(ds_hash_table *ht, const void *key,
-                                 void **value) {
+// Returns 0 if it found the item. Returns 1 in case of an error
+DSHDEF int ds_hashmap_delete(ds_hashmap *map, const void *key) {
     int result = 0;
+    int found = 0;
 
-    unsigned int index = ht->hash(key) % ht->capacity;
+    unsigned int index = map->hash(key) % map->capacity;
+    ds_dynamic_array *bucket = map->buckets + index;
 
-    ds_dynamic_array *keys = ht->keys + index;
-    ds_dynamic_array *values = ht->values + index;
+    for (int i = 0; bucket->count; i++) {
+        ds_hashmap_kv tmp = {0};
+        ds_dynamic_array_get(bucket, i, &tmp);
 
-    for (unsigned int i = 0; i < keys->count; i++) {
-        void *k = NULL;
-        ds_dynamic_array_get_ref(keys, i, &k);
-
-        if (ht->compare(k, key) == 0) {
-            ds_dynamic_array_get_ref(values, i, value);
-            return_defer(0);
+        if (map->compare(key, tmp.key) == 0) {
+            ds_dynamic_array_delete(bucket, i);
+            found = 1;
+            break;
         }
     }
 
-    return_defer(1);
+    if (found == 0) {
+        DS_LOG_ERROR("Failed to find item in hashmap");
+        return_defer(1);
+    }
 
 defer:
     return result;
 }
 
-// Get the number of items in the hash table
-//
-// Returns the number of items in the hash table.
-DSHDEF unsigned int ds_hash_table_count(ds_hash_table *ht) {
-    unsigned int count = 0;
-    for (unsigned int i = 0; i < ht->capacity; i++) {
-        count += (ht->keys + i)->count;
+// Free the hashmap (this does not free the values or the keys)
+DSHDEF int ds_hashmap_free(ds_hashmap *map) {
+    int result = 0;
+
+    for (int i = 0; i < map->capacity; i++) {
+        ds_dynamic_array_free(map->buckets + i);
     }
-    return count;
-}
 
-// Remove an item from the hash table
-//
-// Returns 0 if the item was removed successfully, 1 if the item was not found.
-DSHDEF int ds_hash_table_remove(ds_hash_table *ht, const void *key) {
-    (void)ht;
-    (void)key;
-    DS_LOG_ERROR("Not implemented");
-    return 1;
-}
-
-// Free the hash table
-//
-// This function frees all the memory used by the hash table.
-DSHDEF void ds_hash_table_free(ds_hash_table *ht) {
-    for (unsigned int i = 0; i < ht->capacity; i++) {
-        ds_dynamic_array_free(ht->keys + i);
-        ds_dynamic_array_free(ht->values + i);
+    if (map->buckets != NULL) {
+        DS_FREE(map->allocator, map->buckets);
     }
-    DS_FREE(NULL, ht->keys);
-    DS_FREE(NULL, ht->values);
+
+defer:
+    return result;
 }
 
-#endif // DS_HT_IMPLEMENTATION
+#endif // DS_HM_IMPLEMENTATION
 
 #ifdef DS_AL_IMPLEMENTATION
 
