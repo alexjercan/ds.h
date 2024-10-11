@@ -2199,7 +2199,7 @@ static ds_argument *argparse_get_positional_arg(ds_argparse_parser *parser,
 // - argv: command line arguments
 //
 // Returns 0 if the parsing was successful, 1 otherwise.
-int ds_argparse_parse(ds_argparse_parser *parser, int argc, char *argv[]) {
+DSHDEF int ds_argparse_parse(ds_argparse_parser *parser, int argc, char *argv[]) {
     int result = 0;
 
     if (argparse_validate_parser(parser) != 0) {
@@ -2312,7 +2312,7 @@ defer:
 //
 // Returns:
 // - value of the argument
-char *ds_argparse_get_value(ds_argparse_parser *parser, char *long_name) {
+DSHDEF char *ds_argparse_get_value(ds_argparse_parser *parser, char *long_name) {
     for (unsigned int i = 0; i < parser->arguments.count; i++) {
         ds_argument *item = NULL;
         if (ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item) != 0) {
@@ -2343,7 +2343,7 @@ char *ds_argparse_get_value(ds_argparse_parser *parser, char *long_name) {
 //
 // Returns:
 // - value of the flag argument
-unsigned int ds_argparse_get_flag(ds_argparse_parser *parser, char *long_name) {
+DSHDEF unsigned int ds_argparse_get_flag(ds_argparse_parser *parser, char *long_name) {
     for (unsigned int i = 0; i < parser->arguments.count; i++) {
         ds_argument *item = NULL;
         if (ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item) != 0) {
@@ -2526,7 +2526,7 @@ DSHDEF void ds_argparse_print_help(ds_argparse_parser *parser) {
 //
 // Arguments:
 // - parser: argument parser
-void ds_argparse_print_version(ds_argparse_parser *parser) {
+DSHDEF void ds_argparse_print_version(ds_argparse_parser *parser) {
     fprintf(stdout, "%s %s\n", parser->name, parser->version);
 }
 
@@ -2536,7 +2536,7 @@ void ds_argparse_print_version(ds_argparse_parser *parser) {
 //
 // Arguments:
 // - parser: argument parser
-void ds_argparse_parser_free(ds_argparse_parser *parser) {
+DSHDEF void ds_argparse_parser_free(ds_argparse_parser *parser) {
     ds_dynamic_array_free(&parser->arguments);
 }
 
