@@ -9,20 +9,20 @@
 // Options:
 // - DS_IMPLEMENTATION: Define this macro in one source file to include the
 // implementation of all the data structures and utilities
+// - DS_AL_IMPLEMENTATION: Define this macro in one source file to include the
+// implementation of the allocator utility and set the allocator to use
+// - DS_DA_IMPLEMENTATION: Define this macro in one source file to include the
+// implementation of the dynamic array data structure
 // - DS_PQ_IMPLEMENTATION: Define this macro in one source file to include the
 // implementation of the priority queue data structure
 // - DS_SB_IMPLEMENTATION: Define this macro in one source file to include the
 // implementation of the string builder utility
 // - DS_SS_IMPLEMENTATION: Define this macro in one source file to include the
 // implementation of the string slice utility
-// - DS_DA_IMPLEMENTATION: Define this macro in one source file to include the
-// implementation of the dynamic array data structure
 // - DS_LL_IMPLEMENTATION: Define this macro in one source file to include the
 // implementation of the linked list data structure
 // - DS_HM_IMPLEMENTATION: Define this macro in one source file to include the
 // implementation of the hash map data structure
-// - DS_AL_IMPLEMENTATION: Define this macro in one source file to include the
-// implementation of the allocator utility and set the allocator to use
 // - DS_AP_IMPLEMENTATION: Define this macro in one source file to include the
 // implementation of the ds_argument parser utility
 // - DS_IO_IMPLEMENTATION: Define this macro for some io utils
@@ -66,6 +66,12 @@
 #define DSHDEF extern
 #endif
 #endif
+
+// BASIC UTILS
+
+typedef int bool;
+const bool true = 1;
+const bool false = 0;
 
 // ALLOCATOR
 //
@@ -142,7 +148,7 @@ DSHDEF void ds_priority_queue_init(ds_priority_queue *pq,
 DSHDEF int ds_priority_queue_insert(ds_priority_queue *pq, void *item);
 DSHDEF int ds_priority_queue_pull(ds_priority_queue *pq, void *item);
 DSHDEF int ds_priority_queue_peek(ds_priority_queue *pq, void *item);
-DSHDEF int ds_priority_queue_empty(ds_priority_queue *pq);
+DSHDEF bool ds_priority_queue_empty(ds_priority_queue *pq);
 DSHDEF void ds_priority_queue_free(ds_priority_queue *pq);
 
 // STRING BUILDER
@@ -190,10 +196,10 @@ DSHDEF int ds_string_slice_trim_left(ds_string_slice *ss, char chr);
 DSHDEF int ds_string_slice_trim_right(ds_string_slice *ss, char chr);
 DSHDEF int ds_string_slice_trim(ds_string_slice *ss, char chr);
 DSHDEF int ds_string_slice_to_owned(ds_string_slice *ss, char **str);
-DSHDEF int ds_string_slice_starts_with(ds_string_slice *ss, ds_string_slice *prefix);
-DSHDEF int ds_string_slice_starts_with_pred(ds_string_slice *ss, int (*predicate)(char));
+DSHDEF bool ds_string_slice_starts_with(ds_string_slice *ss, ds_string_slice *prefix);
+DSHDEF bool ds_string_slice_starts_with_pred(ds_string_slice *ss, bool (*predicate)(char));
 DSHDEF int ds_string_slice_step(ds_string_slice *ss, int count);
-DSHDEF int ds_string_slice_empty(ds_string_slice *ss);
+DSHDEF bool ds_string_slice_empty(ds_string_slice *ss);
 DSHDEF void ds_string_slice_free(ds_string_slice *ss);
 
 // (DOUBLY) LINKED LIST
@@ -221,7 +227,7 @@ DSHDEF int ds_linked_list_push_back(ds_linked_list *ll, void *item);
 DSHDEF int ds_linked_list_push_front(ds_linked_list *ll, void *item);
 DSHDEF int ds_linked_list_pop_back(ds_linked_list *ll, void *item);
 DSHDEF int ds_linked_list_pop_front(ds_linked_list *ll, void *item);
-DSHDEF int ds_linked_list_empty(ds_linked_list *ll);
+DSHDEF bool ds_linked_list_empty(ds_linked_list *ll);
 DSHDEF void ds_linked_list_free(ds_linked_list *ll);
 
 // HASH MAP
@@ -610,6 +616,556 @@ static inline void *ds_realloc(void *a, void *ptr, unsigned int old_sz,
 #define DS_DA_IMPLEMENTATION
 #endif // DS_AP_IMPLEMENTATION
 
+#ifdef DS_AL_IMPLEMENTATION
+
+static void uint64_read_le(unsigned char *data, unsigned long int *value) {
+    *value = ((unsigned long int)data[0] << 0) | ((unsigned long int)data[1] << 8) |
+             ((unsigned long int)data[2] << 16) | ((unsigned long int)data[3] << 24) |
+             ((unsigned long int)data[4] << 32) | ((unsigned long int)data[5] << 40) |
+             ((unsigned long int)data[6] << 48) | ((unsigned long int)data[7] << 56);
+}
+
+static void uint64_write_le(unsigned char *data, unsigned long int value) {
+    data[0] = (value >> 0) & 0xff;
+    data[1] = (value >> 8) & 0xff;
+    data[2] = (value >> 16) & 0xff;
+    data[3] = (value >> 24) & 0xff;
+    data[4] = (value >> 32) & 0xff;
+    data[5] = (value >> 40) & 0xff;
+    data[6] = (value >> 48) & 0xff;
+    data[7] = (value >> 56) & 0xff;
+}
+
+static void uint32_read_le(unsigned char *data, unsigned int *value) {
+    *value = ((unsigned int)data[0] << 0) | ((unsigned int)data[1] << 8) |
+             ((unsigned int)data[2] << 16) | ((unsigned int)data[3] << 24);
+}
+
+static void uint32_write_le(unsigned char *data, unsigned int value) {
+    data[0] = (value >> 0) & 0xff;
+    data[1] = (value >> 8) & 0xff;
+    data[2] = (value >> 16) & 0xff;
+    data[3] = (value >> 24) & 0xff;
+}
+
+#define BLOCK_METADATA_SIZE 28
+#define BLOCK_INDEX_UNDEFINED -1
+
+/*
+ * | prev | next | size | free | ... size bytes of data ... |
+ */
+typedef struct block {
+        long int prev;  // 8 bytes
+        long int next;  // 8 bytes
+        unsigned long int size; // 8 bytes
+        unsigned int free; // 4 bytes
+        unsigned char *data; // 8 bytes
+} block_t;
+
+static void block_read(unsigned char *data, block_t *block) {
+    uint64_read_le(data + 0, (unsigned long int *)&block->prev);
+    uint64_read_le(data + 8, (unsigned long int *)&block->next);
+    uint64_read_le(data + 16, &block->size);
+    uint32_read_le(data + 24, &block->free);
+    block->data = data + BLOCK_METADATA_SIZE;
+}
+
+static void block_write(unsigned char *data, block_t *block) {
+    uint64_write_le(data + 0, block->prev);
+    uint64_write_le(data + 8, block->next);
+    uint64_write_le(data + 16, block->size);
+    uint32_write_le(data + 24, block->free);
+}
+
+// Initialize the allocator
+//
+// The start parameter is the start of the memory block to allocate from, and
+// the size parameter is the maximum size of the memory allocator.
+DSHDEF void ds_allocator_init(ds_allocator *allocator, unsigned char *start,
+                              unsigned long int size) {
+    allocator->start = start;
+    allocator->prev = NULL;
+    allocator->top = start;
+    allocator->size = size;
+}
+
+// Dump the allocator to stdout
+//
+// This function prints the contents of the allocator to stdout.
+DSHDEF void ds_allocator_dump(ds_allocator *allocator) {
+    block_t block = {0};
+    unsigned char *ptr = allocator->start;
+
+    fprintf(stdout, "%*s %*s %*s %*s %*s\n", 14, "", 14, "prev", 14, "next", 14,
+            "size", 14, "free");
+
+    while (ptr < allocator->top) {
+        block_read(ptr, &block);
+
+        unsigned char *prev = (block.prev == BLOCK_INDEX_UNDEFINED)
+                            ? NULL
+                            : allocator->start + block.prev;
+        unsigned char *next = (block.next == BLOCK_INDEX_UNDEFINED)
+                            ? NULL
+                            : allocator->start + block.next;
+
+        fprintf(stdout, "%*p %*p %*p %*lu %*u\n", 14, ptr, 14, prev, 14, next,
+                14, block.size, 14, block.free);
+
+        ptr += (block.size + BLOCK_METADATA_SIZE);
+    }
+}
+
+static int allocator_find_block(ds_allocator *allocator, unsigned long int size,
+                                block_t *block) {
+    if (allocator->prev == NULL) {
+        return 0;
+    }
+
+    block_t current = {0};
+    unsigned char *ptr = allocator->start;
+
+    while (ptr < allocator->top) {
+        block_read(ptr, &current);
+
+        if (current.free && current.size >= size + BLOCK_METADATA_SIZE * 2) {
+            unsigned long int old_size = current.size;
+            long int old_next = current.next;
+
+            block_t split = {0};
+            split.prev = (unsigned long int)(ptr - allocator->start);
+            split.next = old_next;
+            split.size = old_size - size - BLOCK_METADATA_SIZE;
+            split.free = 1;
+            split.data = ptr + BLOCK_METADATA_SIZE + size + BLOCK_METADATA_SIZE;
+
+            block_write(ptr + BLOCK_METADATA_SIZE + size, &split);
+
+            *block = current;
+            block->next =
+                (unsigned long int)(ptr - allocator->start) + BLOCK_METADATA_SIZE + size;
+            block->size = size;
+            block->free = 0;
+            block->data = ptr + BLOCK_METADATA_SIZE;
+
+            block_write(ptr, block);
+
+            block_t next = {0};
+            block_read(allocator->start + old_next, &next);
+
+            next.prev =
+                (unsigned long int)(ptr - allocator->start) + BLOCK_METADATA_SIZE + size;
+
+            block_write(allocator->start + old_next, &next);
+
+            return 1;
+        }
+
+        if (current.free && current.size >= size) {
+            *block = current;
+            block->free = 0;
+
+            block_write(ptr, block);
+
+            return 1;
+        }
+
+        ptr += (current.size + BLOCK_METADATA_SIZE);
+    }
+
+    return 0;
+}
+
+// Allocate memory from the allocator
+//
+// This function allocates memory from the allocator. If the allocator is unable
+// to allocate the memory, it returns NULL.
+DSHDEF void *ds_allocator_alloc(ds_allocator *allocator, unsigned long int size) {
+    block_t block = {0};
+    if (allocator_find_block(allocator, size, &block) != 0) {
+        return block.data;
+    }
+
+    if (allocator->top + size + BLOCK_METADATA_SIZE >
+        allocator->start + allocator->size) {
+        return NULL;
+    }
+
+    block.next = BLOCK_INDEX_UNDEFINED;
+    block.size = size;
+    block.free = 0;
+    block.data = allocator->top + BLOCK_METADATA_SIZE;
+
+    if (allocator->prev == NULL) {
+        block.prev = BLOCK_INDEX_UNDEFINED;
+    } else {
+        block.prev = (unsigned long int)(allocator->prev - allocator->start);
+
+        block_t prev = {0};
+        block_read(allocator->prev, &prev);
+        prev.next = (unsigned long int)(allocator->top - allocator->start);
+
+        block_write(allocator->prev, &prev);
+    }
+
+    block_write(allocator->top, &block);
+
+    allocator->prev = allocator->top;
+    allocator->top += size + BLOCK_METADATA_SIZE;
+
+    return block.data;
+}
+
+// Free memory from the allocator
+//
+// This function frees memory from the allocator. If the pointer is not within
+// the bounds of the allocator, it does nothing.
+DSHDEF void ds_allocator_free(ds_allocator *allocator, void *ptr) {
+    if ((unsigned char *)ptr > allocator->top || (unsigned char *)ptr < allocator->start) {
+        return;
+    }
+
+    block_t block = {0};
+    block_read(ptr - BLOCK_METADATA_SIZE, &block);
+    block.free = 1;
+
+    if (block.prev != BLOCK_INDEX_UNDEFINED) {
+        block_t prev = {0};
+        block_read(allocator->start + block.prev, &prev);
+
+        if (prev.free) {
+            prev.next = block.next;
+            prev.size += block.size + BLOCK_METADATA_SIZE;
+
+            unsigned char *mptr = allocator->start + block.prev;
+
+            block_t next = {0};
+            block_read(allocator->start + block.next, &next);
+
+            next.prev = (unsigned long int)((unsigned char *)mptr - allocator->start);
+
+            block_write(allocator->start + block.next, &next);
+            block_write(allocator->start + block.prev, &prev);
+
+            block = prev;
+            ptr = mptr + BLOCK_METADATA_SIZE;
+        }
+    }
+
+    if (block.next != BLOCK_INDEX_UNDEFINED) {
+        block_t next = {0};
+        block_read(allocator->start + block.next, &next);
+
+        if (next.free) {
+            block_t next_next = {0};
+            block_read(allocator->start + next.next, &next_next);
+
+            unsigned char *mptr = ptr - BLOCK_METADATA_SIZE;
+
+            next_next.prev = (unsigned long int)((unsigned char *)mptr - allocator->start);
+
+            block_write(allocator->start + next.next, &next_next);
+
+            block.next = next.next;
+            block.size += next.size + BLOCK_METADATA_SIZE;
+        }
+    }
+
+    block_write(ptr - BLOCK_METADATA_SIZE, &block);
+}
+
+#endif // DS_AL_IMPLEMENTATION
+
+#ifdef DS_DA_IMPLEMENTATION
+
+// Initialize the dynamic array with a custom allocator
+//
+// The item_size parameter is the size of each item in the array.
+DSHDEF void ds_dynamic_array_init_allocator(ds_dynamic_array *da,
+                                            unsigned int item_size,
+                                            struct ds_allocator *allocator) {
+    da->allocator = allocator;
+    da->items = NULL;
+    da->item_size = item_size;
+    da->count = 0;
+    da->capacity = 0;
+}
+
+// Initialize the dynamic array
+//
+// The item_size parameter is the size of each item in the array.
+DSHDEF void ds_dynamic_array_init(ds_dynamic_array *da,
+                                  unsigned int item_size) {
+    ds_dynamic_array_init_allocator(da, item_size, NULL);
+}
+
+// Append an item to the dynamic array
+//
+// Returns 0 if the item was appended successfully, 1 if the array could not be
+// reallocated.
+DSHDEF int ds_dynamic_array_append(ds_dynamic_array *da, const void *item) {
+    int result = 0;
+
+    if (da->count >= da->capacity) {
+        unsigned int new_capacity = da->capacity * 2;
+        if (new_capacity == 0) {
+            new_capacity = DS_DA_INIT_CAPACITY;
+        }
+
+        da->items =
+            DS_REALLOC(da->allocator, da->items, da->capacity * da->item_size,
+                       new_capacity * da->item_size);
+
+        if (da->items == NULL) {
+            DS_LOG_ERROR("Failed to reallocate dynamic array");
+            return_defer(1);
+        }
+
+        da->capacity = new_capacity;
+    }
+
+    DS_MEMCPY((char *)da->items + da->count * da->item_size, item,
+              da->item_size);
+    da->count++;
+
+defer:
+    return result;
+}
+
+// Pop an item from the dynamic array
+//
+// Returns 0 if the item was popped successfully, 1 if the array is empty.
+// If the item is NULL, then we just pop the item without returning it.
+DSHDEF int ds_dynamic_array_pop(ds_dynamic_array *da, const void **item) {
+    int result = 0;
+
+    if (da->count == 0) {
+        DS_LOG_ERROR("Dynamic array is empty");
+        *item = NULL;
+        return_defer(1);
+    }
+
+    if (item != NULL) {
+        *item = (char *)da->items + (da->count - 1) * da->item_size;
+    }
+    da->count--;
+
+defer:
+    return result;
+}
+
+// Append multiple items to the dynamic array
+//
+// Returns 0 if the items were appended successfully, 1 if the array could not
+// be reallocated.
+DSHDEF int ds_dynamic_array_append_many(ds_dynamic_array *da, void **new_items,
+                                        unsigned int new_items_count) {
+    int result = 0;
+
+    if (da->count + new_items_count > da->capacity) {
+        if (da->capacity == 0) {
+            da->capacity = DS_DA_INIT_CAPACITY;
+        }
+        while (da->count + new_items_count > da->capacity) {
+            da->capacity *= 2;
+        }
+
+        da->items =
+            DS_REALLOC(da->allocator, da->items, da->capacity * da->item_size,
+                       da->capacity * da->item_size);
+        if (da->items == NULL) {
+            DS_LOG_ERROR("Failed to reallocate dynamic array");
+            return_defer(1);
+        }
+    }
+
+    DS_MEMCPY((char *)da->items + da->count * da->item_size, new_items,
+              new_items_count * da->item_size);
+    da->count += new_items_count;
+
+defer:
+    return result;
+}
+
+// Get an item from the dynamic array
+//
+// Returns 0 if the item was retrieved successfully, 1 if the index is out of
+// bounds.
+DSHDEF int ds_dynamic_array_get(ds_dynamic_array *da, unsigned int index,
+                                void *item) {
+    int result = 0;
+
+    if (index >= da->count) {
+        DS_LOG_ERROR("Index out of bounds");
+        return_defer(1);
+    }
+
+    DS_MEMCPY(item, (char *)da->items + index * da->item_size, da->item_size);
+
+defer:
+    return result;
+}
+
+// Get a reference to an item from the dynamic array
+DSHDEF int ds_dynamic_array_get_ref(ds_dynamic_array *da, unsigned int index,
+                                    void **item) {
+    int result = 0;
+
+    if (index >= da->count) {
+        DS_LOG_ERROR("Index out of bounds %d %d", index, da->count);
+        return_defer(1);
+    }
+
+    *item = (char *)da->items + index * da->item_size;
+
+defer:
+    return result;
+}
+
+// Copy the dynamic array to another dynamic array
+//
+// Returns 0 if the array was copied successfully, 1 if the array could not be
+// allocated.
+DSHDEF int ds_dynamic_array_copy(ds_dynamic_array *da, ds_dynamic_array *copy) {
+    int result = 0;
+
+    copy->items = DS_MALLOC(da->allocator, da->capacity * da->item_size);
+    if (copy->items == NULL) {
+        DS_LOG_ERROR("Failed to allocate dynamic array items");
+        return_defer(1);
+    }
+
+    copy->item_size = da->item_size;
+    copy->count = da->count;
+    copy->capacity = da->capacity;
+
+    DS_MEMCPY(copy->items, da->items, da->count * da->item_size);
+
+defer:
+    return result;
+}
+
+// Sort the dynamic array
+//
+// This uses the qsort algorithm
+DSHDEF void ds_dynamic_array_sort(ds_dynamic_array *da,
+                                  int (*compare)(const void *, const void *)) {
+    qsort(da->items, da->count, da->item_size, compare);
+}
+
+// Reverse the dynamic array
+//
+// Returns 0 if the array was reversed successfully, 1 if the array could not be
+// allocated.
+DSHDEF int ds_dynamic_array_reverse(ds_dynamic_array *da) {
+    int result = 0;
+
+    for (unsigned int i = 0; i < da->count / 2; i++) {
+        unsigned int j = da->count - i - 1;
+
+        if (ds_dynamic_array_swap(da, i, j) != 0) {
+            DS_LOG_ERROR("Failed to swap items");
+            return_defer(1);
+        }
+    }
+
+defer:
+    return result;
+}
+
+// Swap two items in the dynamic array
+//
+// Returns 0 if the items were swapped successfully, 1 if the index is out of
+// bounds or if the temporary item could not be allocated.
+DSHDEF int ds_dynamic_array_swap(ds_dynamic_array *da, unsigned int index1,
+                                 unsigned int index2) {
+    int result = 0;
+
+    if (index1 >= da->count || index2 >= da->count) {
+        DS_LOG_ERROR("Index out of bounds");
+        return_defer(1);
+    }
+
+    if (index1 == index2) {
+        return_defer(0);
+    }
+
+    void *temp = DS_MALLOC(da->allocator, da->item_size);
+    if (temp == NULL) {
+        DS_LOG_ERROR("Failed to allocate temporary item");
+        return_defer(1);
+    }
+
+    void *index1_item = NULL;
+    if (ds_dynamic_array_get_ref(da, index1, &index1_item) != 0) {
+        DS_LOG_ERROR("Could not get item");
+        return_defer(1);
+    }
+
+    void *index2_item = NULL;
+    if (ds_dynamic_array_get_ref(da, index2, &index2_item) != 0) {
+        DS_LOG_ERROR("Could not get item");
+        return_defer(1);
+    }
+
+
+    DS_MEMCPY(temp, index1_item, da->item_size);
+    DS_MEMCPY(index1_item, index2_item, da->item_size);
+    DS_MEMCPY(index2_item, temp, da->item_size);
+
+    DS_FREE(da->allocator, temp);
+
+defer:
+    return result;
+}
+
+// Delete an item from the dynamic array
+//
+// Returns 0 in case of succsess. Returns 1 if the index is out of bounds
+DSHDEF int ds_dynamic_array_delete(ds_dynamic_array *da, unsigned int index) {
+    int result = 0;
+
+    if (index >= da->count) {
+        DS_LOG_ERROR("Index out of bounds");
+        return_defer(1);
+    }
+
+    unsigned int n = da->count - index - 1;
+
+    if (n > 0) {
+        void *dest = NULL;
+        if (ds_dynamic_array_get_ref(da, index, &dest) != 0) {
+            DS_LOG_ERROR("Could not get item");
+            return_defer(1);
+        }
+
+        void *src = NULL;
+        if (ds_dynamic_array_get_ref(da, index + 1, &src) != 0) {
+            DS_LOG_ERROR("Could not get item");
+            return_defer(1);
+        }
+
+        DS_MEMCPY(dest, src, n * da->item_size);
+    }
+
+    da->count -= 1;
+
+defer:
+    return result;
+}
+
+// Free the dynamic array
+DSHDEF void ds_dynamic_array_free(ds_dynamic_array *da) {
+    if (da->items != NULL) {
+        DS_FREE(da->allocator, da->items);
+    }
+    da->items = NULL;
+    da->count = 0;
+    da->capacity = 0;
+}
+
+#endif // DS_DA_IMPLEMENTATION
+
 #ifdef DS_PQ_IMPLEMENTATION
 
 // Initialize the priority queue with a custom allocator
@@ -632,6 +1188,7 @@ DSHDEF void ds_priority_queue_init(ds_priority_queue *pq,
 //
 // Returns 0 if the item was inserted successfully.
 DSHDEF int ds_priority_queue_insert(ds_priority_queue *pq, void *item) {
+    int result = 0;
     ds_dynamic_array_append(&pq->items, item);
 
     int index = pq->items.count - 1;
@@ -639,11 +1196,13 @@ DSHDEF int ds_priority_queue_insert(ds_priority_queue *pq, void *item) {
 
     void *index_item = NULL;
     if (ds_dynamic_array_get_ref(&pq->items, index, &index_item) != 0) {
+        DS_LOG_ERROR("Could not get item");
         return_defer(1);
     }
 
     void *parent_item = NULL;
     if (ds_dynamic_array_get_ref(&pq->items, parent, &parent_item) != 0) {
+        DS_LOG_ERROR("Could not get item");
         return_defer(1);
     }
 
@@ -654,14 +1213,17 @@ DSHDEF int ds_priority_queue_insert(ds_priority_queue *pq, void *item) {
         parent = (index - 1) / 2;
 
         if (ds_dynamic_array_get_ref(&pq->items, index, &index_item) != 0) {
+            DS_LOG_ERROR("Could not get item");
             return_defer(1);
         }
         if (ds_dynamic_array_get_ref(&pq->items, parent, &parent_item) != 0) {
+            DS_LOG_ERROR("Could not get item");
             return_defer(1);
         }
     }
 
-    return 0;
+defer:
+    return result;
 }
 
 // Pull the item with the highest priority from the priority queue
@@ -688,35 +1250,42 @@ DSHDEF int ds_priority_queue_pull(ds_priority_queue *pq, void *item) {
         index = swap;
 
         unsigned int left = 2 * index + 1;
-        void *left_item = NULL;
-        if (ds_dynamic_array_get_ref(&pq->items, swap, &swap_item) != 0) {
-            return_defer(1);
-        }
-        if (ds_dynamic_array_get_ref(&pq->items, left, &left_item) != 0) {
-            return_defer(1);
-        }
-        if (left < pq->items.count - 1 &&
-            pq->compare(left_item, swap_item) > 0) {
-            swap = left;
+        if (left < pq->items.count - 1) {
+            void *left_item = NULL;
+            if (ds_dynamic_array_get_ref(&pq->items, swap, &swap_item) != 0) {
+                DS_LOG_ERROR("Could not get item");
+                return_defer(1);
+            }
+            if (ds_dynamic_array_get_ref(&pq->items, left, &left_item) != 0) {
+                DS_LOG_ERROR("Could not get item");
+                return_defer(1);
+            }
+            if (pq->compare(left_item, swap_item) > 0) {
+                swap = left;
+            }
         }
 
         unsigned int right = 2 * index + 2;
-        void *right_item = NULL;
-        if (ds_dynamic_array_get_ref(&pq->items, swap, &swap_item) != 0) {
-            return_defer(1);
-        }
-        if (ds_dynamic_array_get_ref(&pq->items, right, &right_item) != 0) {
-            return_defer(1);
-        }
-        if (right < pq->items.count - 1 &&
-            pq->compare(right_item, swap_item) > 0) {
-            swap = right;
+        if (right < pq->items.count - 1) {
+            void *right_item = NULL;
+            if (ds_dynamic_array_get_ref(&pq->items, swap, &swap_item) != 0) {
+                DS_LOG_ERROR("Could not get item");
+                return_defer(1);
+            }
+            if (ds_dynamic_array_get_ref(&pq->items, right, &right_item) != 0) {
+                DS_LOG_ERROR("Could not get item");
+                return_defer(1);
+            }
+            if (pq->compare(right_item, swap_item) > 0) {
+                swap = right;
+            }
         }
 
         ds_dynamic_array_swap(&pq->items, index, swap);
     } while (swap != index);
 
     pq->items.count--;
+
 defer:
     return result;
 }
@@ -742,7 +1311,7 @@ defer:
 }
 
 // Check if the priority queue is empty
-DSHDEF int ds_priority_queue_empty(ds_priority_queue *pq) {
+DSHDEF bool ds_priority_queue_empty(ds_priority_queue *pq) {
     return pq->items.count == 0;
 }
 
@@ -1016,14 +1585,14 @@ defer:
 // Check if the string slice starts with a specific string given as a char*
 //
 // Returns 1 in case the string slice starts with str. Returns 0 otherwise
-DSHDEF int ds_string_slice_starts_with(ds_string_slice *ss, ds_string_slice *prefix) {
+DSHDEF bool ds_string_slice_starts_with(ds_string_slice *ss, ds_string_slice *prefix) {
     return DS_MEMCMP(ss->str, prefix->str, prefix->len) == 0;
 }
 
 // Check if the string slice starts with a char that matches a predicate function
 //
 // Returns 1 if the string slice starts with a predicate. Returns 0 otherwise.
-DSHDEF int ds_string_slice_starts_with_pred(ds_string_slice *ss, int (*predicate)(char)) {
+DSHDEF bool ds_string_slice_starts_with_pred(ds_string_slice *ss, bool (*predicate)(char)) {
     return predicate(*ss->str);
 }
 
@@ -1035,8 +1604,9 @@ DSHDEF int ds_string_slice_step(ds_string_slice *ss, int count) {
     return 0;
 }
 
-DSHDEF int ds_string_slice_empty(ds_string_slice *ss) {
-    return *ss->str == '\0';
+// Check if the string slice is empty
+DSHDEF bool ds_string_slice_empty(ds_string_slice *ss) {
+    return ss->len == 0;
 }
 
 // Free the string slice
@@ -1046,286 +1616,6 @@ DSHDEF void ds_string_slice_free(ds_string_slice *ss) {
 }
 
 #endif // DS_SS_IMPLEMENTATION
-
-#ifdef DS_DA_IMPLEMENTATION
-
-// Initialize the dynamic array with a custom allocator
-//
-// The item_size parameter is the size of each item in the array.
-DSHDEF void ds_dynamic_array_init_allocator(ds_dynamic_array *da,
-                                            unsigned int item_size,
-                                            struct ds_allocator *allocator) {
-    da->allocator = allocator;
-    da->items = NULL;
-    da->item_size = item_size;
-    da->count = 0;
-    da->capacity = 0;
-}
-
-// Initialize the dynamic array
-//
-// The item_size parameter is the size of each item in the array.
-DSHDEF void ds_dynamic_array_init(ds_dynamic_array *da,
-                                  unsigned int item_size) {
-    ds_dynamic_array_init_allocator(da, item_size, NULL);
-}
-
-// Append an item to the dynamic array
-//
-// Returns 0 if the item was appended successfully, 1 if the array could not be
-// reallocated.
-DSHDEF int ds_dynamic_array_append(ds_dynamic_array *da, const void *item) {
-    int result = 0;
-
-    if (da->count >= da->capacity) {
-        unsigned int new_capacity = da->capacity * 2;
-        if (new_capacity == 0) {
-            new_capacity = DS_DA_INIT_CAPACITY;
-        }
-
-        da->items =
-            DS_REALLOC(da->allocator, da->items, da->capacity * da->item_size,
-                       new_capacity * da->item_size);
-
-        if (da->items == NULL) {
-            DS_LOG_ERROR("Failed to reallocate dynamic array");
-            return_defer(1);
-        }
-
-        da->capacity = new_capacity;
-    }
-
-    DS_MEMCPY((char *)da->items + da->count * da->item_size, item,
-              da->item_size);
-    da->count++;
-
-defer:
-    return result;
-}
-
-// Pop an item from the dynamic array
-//
-// Returns 0 if the item was popped successfully, 1 if the array is empty.
-// If the item is NULL, then we just pop the item without returning it.
-DSHDEF int ds_dynamic_array_pop(ds_dynamic_array *da, const void **item) {
-    int result = 0;
-
-    if (da->count == 0) {
-        DS_LOG_ERROR("Dynamic array is empty");
-        *item = NULL;
-        return_defer(1);
-    }
-
-    if (item != NULL) {
-        *item = (char *)da->items + (da->count - 1) * da->item_size;
-    }
-    da->count--;
-
-defer:
-    return result;
-}
-
-// Append multiple items to the dynamic array
-//
-// Returns 0 if the items were appended successfully, 1 if the array could not
-// be reallocated.
-DSHDEF int ds_dynamic_array_append_many(ds_dynamic_array *da, void **new_items,
-                                        unsigned int new_items_count) {
-    int result = 0;
-
-    if (da->count + new_items_count > da->capacity) {
-        if (da->capacity == 0) {
-            da->capacity = DS_DA_INIT_CAPACITY;
-        }
-        while (da->count + new_items_count > da->capacity) {
-            da->capacity *= 2;
-        }
-
-        da->items =
-            DS_REALLOC(da->allocator, da->items, da->capacity * da->item_size,
-                       da->capacity * da->item_size);
-        if (da->items == NULL) {
-            DS_LOG_ERROR("Failed to reallocate dynamic array");
-            return_defer(1);
-        }
-    }
-
-    DS_MEMCPY((char *)da->items + da->count * da->item_size, new_items,
-              new_items_count * da->item_size);
-    da->count += new_items_count;
-
-defer:
-    return result;
-}
-
-// Get an item from the dynamic array
-//
-// Returns 0 if the item was retrieved successfully, 1 if the index is out of
-// bounds.
-DSHDEF int ds_dynamic_array_get(ds_dynamic_array *da, unsigned int index,
-                                void *item) {
-    int result = 0;
-
-    if (index >= da->count) {
-        DS_LOG_ERROR("Index out of bounds");
-        return_defer(1);
-    }
-
-    DS_MEMCPY(item, (char *)da->items + index * da->item_size, da->item_size);
-
-defer:
-    return result;
-}
-
-// Get a reference to an item from the dynamic array
-DSHDEF int ds_dynamic_array_get_ref(ds_dynamic_array *da, unsigned int index,
-                                    void **item) {
-    int result = 0;
-
-    if (index >= da->count) {
-        DS_LOG_ERROR("Index out of bounds");
-        return_defer(1);
-    }
-
-    *item = (char *)da->items + index * da->item_size;
-
-defer:
-    return result;
-}
-
-// Copy the dynamic array to another dynamic array
-//
-// Returns 0 if the array was copied successfully, 1 if the array could not be
-// allocated.
-DSHDEF int ds_dynamic_array_copy(ds_dynamic_array *da, ds_dynamic_array *copy) {
-    int result = 0;
-
-    copy->items = DS_MALLOC(da->allocator, da->capacity * da->item_size);
-    if (copy->items == NULL) {
-        DS_LOG_ERROR("Failed to allocate dynamic array items");
-        return_defer(1);
-    }
-
-    copy->item_size = da->item_size;
-    copy->count = da->count;
-    copy->capacity = da->capacity;
-
-    DS_MEMCPY(copy->items, da->items, da->count * da->item_size);
-
-defer:
-    return result;
-}
-
-// Sort the dynamic array
-//
-// This uses the qsort algorithm
-DSHDEF void ds_dynamic_array_sort(ds_dynamic_array *da,
-                                  int (*compare)(const void *, const void *)) {
-    qsort(da->items, da->count, da->item_size, compare);
-}
-
-// Reverse the dynamic array
-//
-// Returns 0 if the array was reversed successfully, 1 if the array could not be
-// allocated.
-DSHDEF int ds_dynamic_array_reverse(ds_dynamic_array *da) {
-    int result = 0;
-
-    for (unsigned int i = 0; i < da->count / 2; i++) {
-        unsigned int j = da->count - i - 1;
-
-        void *temp = DS_MALLOC(da->allocator, da->item_size);
-        if (temp == NULL) {
-            DS_LOG_ERROR("Failed to allocate temporary item");
-            return_defer(1);
-        }
-
-        DS_MEMCPY(temp, (char *)da->items + i * da->item_size, da->item_size);
-        DS_MEMCPY((char *)da->items + i * da->item_size,
-                  (char *)da->items + j * da->item_size, da->item_size);
-        DS_MEMCPY((char *)da->items + j * da->item_size, temp, da->item_size);
-        DS_FREE(da->allocator, temp);
-    }
-
-defer:
-    return result;
-}
-
-// Swap two items in the dynamic array
-//
-// Returns 0 if the items were swapped successfully, 1 if the index is out of
-// bounds or if the temporary item could not be allocated.
-DSHDEF int ds_dynamic_array_swap(ds_dynamic_array *da, unsigned int index1,
-                                 unsigned int index2) {
-    int result = 0;
-
-    if (index1 >= da->count || index2 >= da->count) {
-        DS_LOG_ERROR("Index out of bounds");
-        return_defer(1);
-    }
-
-    void *temp = DS_MALLOC(da->allocator, da->item_size);
-    if (temp == NULL) {
-        DS_LOG_ERROR("Failed to allocate temporary item");
-        return_defer(1);
-    }
-
-    void *index1_item = NULL;
-    ds_dynamic_array_get_ref(da, index1, &index1_item);
-
-    void *index2_item = NULL;
-    ds_dynamic_array_get_ref(da, index2, &index2_item);
-
-    DS_MEMCPY(temp, index1_item, da->item_size);
-    DS_MEMCPY(index1_item, index2_item, da->item_size);
-    DS_MEMCPY(index2_item, temp, da->item_size);
-
-    DS_FREE(da->allocator, temp);
-
-defer:
-    return result;
-}
-
-// Delete an item from the dynamic array
-//
-// Returns 0 in case of succsess. Returns 1 if the index is out of bounds
-DSHDEF int ds_dynamic_array_delete(ds_dynamic_array *da, unsigned int index) {
-    int result = 0;
-
-    if (index >= da->count) {
-        DS_LOG_ERROR("Index out of bounds");
-        return_defer(1);
-    }
-
-    unsigned int n = da->count - index - 1;
-
-    if (n > 0) {
-        void *dest = NULL;
-        ds_dynamic_array_get_ref(da, index, &dest);
-
-        void *src = NULL;
-        ds_dynamic_array_get_ref(da, index + 1, &src);
-
-        DS_MEMCPY(dest, src, n * da->item_size);
-    }
-
-    da->count -= 1;
-
-defer:
-    return result;
-}
-
-// Free the dynamic array
-DSHDEF void ds_dynamic_array_free(ds_dynamic_array *da) {
-    if (da->items != NULL) {
-        DS_FREE(da->allocator, da->items);
-    }
-    da->items = NULL;
-    da->count = 0;
-    da->capacity = 0;
-}
-
-#endif // DS_DA_IMPLEMENTATION
 
 #ifdef DS_LL_IMPLEMENTATION
 
@@ -1507,7 +1797,7 @@ defer:
 // Check if the linked list is empty
 //
 // Returns 1 if the list is empty, 0 if the list is not empty.
-DSHDEF int ds_linked_list_empty(ds_linked_list *ll) { return ll->head == NULL; }
+DSHDEF bool ds_linked_list_empty(ds_linked_list *ll) { return ll->head == NULL; }
 
 DSHDEF void ds_linked_list_free(ds_linked_list *ll) {
     ds_linked_list_node *node = ll->head;
@@ -1661,266 +1951,6 @@ DSHDEF void ds_hashmap_free(ds_hashmap *map) {
 
 #endif // DS_HM_IMPLEMENTATION
 
-#ifdef DS_AL_IMPLEMENTATION
-
-static void uint64_read_le(unsigned char *data, unsigned long int *value) {
-    *value = ((unsigned long int)data[0] << 0) | ((unsigned long int)data[1] << 8) |
-             ((unsigned long int)data[2] << 16) | ((unsigned long int)data[3] << 24) |
-             ((unsigned long int)data[4] << 32) | ((unsigned long int)data[5] << 40) |
-             ((unsigned long int)data[6] << 48) | ((unsigned long int)data[7] << 56);
-}
-
-static void uint64_write_le(unsigned char *data, unsigned long int value) {
-    data[0] = (value >> 0) & 0xff;
-    data[1] = (value >> 8) & 0xff;
-    data[2] = (value >> 16) & 0xff;
-    data[3] = (value >> 24) & 0xff;
-    data[4] = (value >> 32) & 0xff;
-    data[5] = (value >> 40) & 0xff;
-    data[6] = (value >> 48) & 0xff;
-    data[7] = (value >> 56) & 0xff;
-}
-
-static void uint32_read_le(unsigned char *data, unsigned int *value) {
-    *value = ((unsigned int)data[0] << 0) | ((unsigned int)data[1] << 8) |
-             ((unsigned int)data[2] << 16) | ((unsigned int)data[3] << 24);
-}
-
-static void uint32_write_le(unsigned char *data, unsigned int value) {
-    data[0] = (value >> 0) & 0xff;
-    data[1] = (value >> 8) & 0xff;
-    data[2] = (value >> 16) & 0xff;
-    data[3] = (value >> 24) & 0xff;
-}
-
-#define BLOCK_METADATA_SIZE 28
-#define BLOCK_INDEX_UNDEFINED -1
-
-/*
- * | prev | next | size | free | ... size bytes of data ... |
- */
-typedef struct block {
-        long int prev;  // 8 bytes
-        long int next;  // 8 bytes
-        unsigned long int size; // 8 bytes
-        unsigned int free; // 4 bytes
-        unsigned char *data; // 8 bytes
-} block_t;
-
-static void block_read(unsigned char *data, block_t *block) {
-    uint64_read_le(data + 0, (unsigned long int *)&block->prev);
-    uint64_read_le(data + 8, (unsigned long int *)&block->next);
-    uint64_read_le(data + 16, &block->size);
-    uint32_read_le(data + 24, &block->free);
-    block->data = data + BLOCK_METADATA_SIZE;
-}
-
-static void block_write(unsigned char *data, block_t *block) {
-    uint64_write_le(data + 0, block->prev);
-    uint64_write_le(data + 8, block->next);
-    uint64_write_le(data + 16, block->size);
-    uint32_write_le(data + 24, block->free);
-}
-
-// Initialize the allocator
-//
-// The start parameter is the start of the memory block to allocate from, and
-// the size parameter is the maximum size of the memory allocator.
-DSHDEF void ds_allocator_init(ds_allocator *allocator, unsigned char *start,
-                              unsigned long int size) {
-    allocator->start = start;
-    allocator->prev = NULL;
-    allocator->top = start;
-    allocator->size = size;
-}
-
-// Dump the allocator to stdout
-//
-// This function prints the contents of the allocator to stdout.
-DSHDEF void ds_allocator_dump(ds_allocator *allocator) {
-    block_t block = {0};
-    unsigned char *ptr = allocator->start;
-
-    fprintf(stdout, "%*s %*s %*s %*s %*s\n", 14, "", 14, "prev", 14, "next", 14,
-            "size", 14, "free");
-
-    while (ptr < allocator->top) {
-        block_read(ptr, &block);
-
-        unsigned char *prev = (block.prev == BLOCK_INDEX_UNDEFINED)
-                            ? NULL
-                            : allocator->start + block.prev;
-        unsigned char *next = (block.next == BLOCK_INDEX_UNDEFINED)
-                            ? NULL
-                            : allocator->start + block.next;
-
-        fprintf(stdout, "%*p %*p %*p %*lu %*u\n", 14, ptr, 14, prev, 14, next,
-                14, block.size, 14, block.free);
-
-        ptr += (block.size + BLOCK_METADATA_SIZE);
-    }
-}
-
-static int allocator_find_block(ds_allocator *allocator, unsigned long int size,
-                                block_t *block) {
-    if (allocator->prev == NULL) {
-        return 0;
-    }
-
-    block_t current = {0};
-    unsigned char *ptr = allocator->start;
-
-    while (ptr < allocator->top) {
-        block_read(ptr, &current);
-
-        if (current.free && current.size >= size + BLOCK_METADATA_SIZE * 2) {
-            unsigned long int old_size = current.size;
-            long int old_next = current.next;
-
-            block_t split = {0};
-            split.prev = (unsigned long int)(ptr - allocator->start);
-            split.next = old_next;
-            split.size = old_size - size - BLOCK_METADATA_SIZE;
-            split.free = 1;
-            split.data = ptr + BLOCK_METADATA_SIZE + size + BLOCK_METADATA_SIZE;
-
-            block_write(ptr + BLOCK_METADATA_SIZE + size, &split);
-
-            *block = current;
-            block->next =
-                (unsigned long int)(ptr - allocator->start) + BLOCK_METADATA_SIZE + size;
-            block->size = size;
-            block->free = 0;
-            block->data = ptr + BLOCK_METADATA_SIZE;
-
-            block_write(ptr, block);
-
-            block_t next = {0};
-            block_read(allocator->start + old_next, &next);
-
-            next.prev =
-                (unsigned long int)(ptr - allocator->start) + BLOCK_METADATA_SIZE + size;
-
-            block_write(allocator->start + old_next, &next);
-
-            return 1;
-        }
-
-        if (current.free && current.size >= size) {
-            *block = current;
-            block->free = 0;
-
-            block_write(ptr, block);
-
-            return 1;
-        }
-
-        ptr += (current.size + BLOCK_METADATA_SIZE);
-    }
-
-    return 0;
-}
-
-// Allocate memory from the allocator
-//
-// This function allocates memory from the allocator. If the allocator is unable
-// to allocate the memory, it returns NULL.
-DSHDEF void *ds_allocator_alloc(ds_allocator *allocator, unsigned long int size) {
-    block_t block = {0};
-    if (allocator_find_block(allocator, size, &block) != 0) {
-        return block.data;
-    }
-
-    if (allocator->top + size + BLOCK_METADATA_SIZE >
-        allocator->start + allocator->size) {
-        return NULL;
-    }
-
-    block.next = BLOCK_INDEX_UNDEFINED;
-    block.size = size;
-    block.free = 0;
-    block.data = allocator->top + BLOCK_METADATA_SIZE;
-
-    if (allocator->prev == NULL) {
-        block.prev = BLOCK_INDEX_UNDEFINED;
-    } else {
-        block.prev = (unsigned long int)(allocator->prev - allocator->start);
-
-        block_t prev = {0};
-        block_read(allocator->prev, &prev);
-        prev.next = (unsigned long int)(allocator->top - allocator->start);
-
-        block_write(allocator->prev, &prev);
-    }
-
-    block_write(allocator->top, &block);
-
-    allocator->prev = allocator->top;
-    allocator->top += size + BLOCK_METADATA_SIZE;
-
-    return block.data;
-}
-
-// Free memory from the allocator
-//
-// This function frees memory from the allocator. If the pointer is not within
-// the bounds of the allocator, it does nothing.
-DSHDEF void ds_allocator_free(ds_allocator *allocator, void *ptr) {
-    if ((unsigned char *)ptr > allocator->top || (unsigned char *)ptr < allocator->start) {
-        return;
-    }
-
-    block_t block = {0};
-    block_read(ptr - BLOCK_METADATA_SIZE, &block);
-    block.free = 1;
-
-    if (block.prev != BLOCK_INDEX_UNDEFINED) {
-        block_t prev = {0};
-        block_read(allocator->start + block.prev, &prev);
-
-        if (prev.free) {
-            prev.next = block.next;
-            prev.size += block.size + BLOCK_METADATA_SIZE;
-
-            unsigned char *mptr = allocator->start + block.prev;
-
-            block_t next = {0};
-            block_read(allocator->start + block.next, &next);
-
-            next.prev = (unsigned long int)((unsigned char *)mptr - allocator->start);
-
-            block_write(allocator->start + block.next, &next);
-            block_write(allocator->start + block.prev, &prev);
-
-            block = prev;
-            ptr = mptr + BLOCK_METADATA_SIZE;
-        }
-    }
-
-    if (block.next != BLOCK_INDEX_UNDEFINED) {
-        block_t next = {0};
-        block_read(allocator->start + block.next, &next);
-
-        if (next.free) {
-            block_t next_next = {0};
-            block_read(allocator->start + next.next, &next_next);
-
-            unsigned char *mptr = ptr - BLOCK_METADATA_SIZE;
-
-            next_next.prev = (unsigned long int)((unsigned char *)mptr - allocator->start);
-
-            block_write(allocator->start + next.next, &next_next);
-
-            block.next = next.next;
-            block.size += next.size + BLOCK_METADATA_SIZE;
-        }
-    }
-
-    block_write(ptr - BLOCK_METADATA_SIZE, &block);
-}
-
-#endif // DS_AL_IMPLEMENTATION
-
 #ifdef DS_AP_IMPLEMENTATION
 
 // Initialize the argparser with a custom allocator
@@ -1997,7 +2027,10 @@ static int argparse_validate_parser(ds_argparse_parser *parser) {
 
     for (unsigned int i = 0; i < parser->arguments.count; i++) {
         ds_argument *item = NULL;
-        ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item);
+        if (ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item) != 0) {
+            DS_LOG_ERROR("Could not get item");
+            return_defer(1);
+        }
 
         ds_argparse_options options = item->options;
 
@@ -2039,6 +2072,7 @@ static int argparse_validate_parser(ds_argparse_parser *parser) {
         }
     }
 
+defer:
     return result;
 }
 
@@ -2047,7 +2081,10 @@ static int argparse_post_validate_parser(ds_argparse_parser *parser) {
 
     for (unsigned int i = 0; i < parser->arguments.count; i++) {
         ds_argument *item = NULL;
-        ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item);
+        if (ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item) != 0) {
+            DS_LOG_ERROR("Could not get item");
+            return_defer(1);
+        }
 
         ds_argparse_options options = item->options;
 
@@ -2086,6 +2123,7 @@ static int argparse_post_validate_parser(ds_argparse_parser *parser) {
         }
     }
 
+defer:
     return result;
 }
 
@@ -2100,7 +2138,10 @@ static ds_argument *argparse_get_option_arg(ds_argparse_parser *parser,
 
     for (unsigned int j = 0; j < parser->arguments.count; j++) {
         ds_argument *item = NULL;
-        ds_dynamic_array_get_ref(&parser->arguments, j, (void **)&item);
+        if (ds_dynamic_array_get_ref(&parser->arguments, j, (void **)&item) != 0) {
+            DS_LOG_ERROR("Could not get item");
+            break;
+        }
 
         if ((name[1] == '-' && item->options.long_name != NULL &&
              strcmp(name + 2, item->options.long_name) == 0) ||
@@ -2129,7 +2170,10 @@ static ds_argument *argparse_get_positional_arg(ds_argparse_parser *parser,
     ds_argument *arg = NULL;
     for (unsigned int j = 0; j < parser->arguments.count; j++) {
         ds_argument *item = NULL;
-        ds_dynamic_array_get_ref(&parser->arguments, j, (void **)&item);
+        if (ds_dynamic_array_get_ref(&parser->arguments, j, (void **)&item) != 0) {
+            DS_LOG_ERROR("Could not get item");
+            break;
+        }
 
         if (item->options.type == ARGUMENT_TYPE_POSITIONAL &&
             item->value == NULL) {
@@ -2273,7 +2317,10 @@ defer:
 char *ds_argparse_get_value(ds_argparse_parser *parser, char *long_name) {
     for (unsigned int i = 0; i < parser->arguments.count; i++) {
         ds_argument *item = NULL;
-        ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item);
+        if (ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item) != 0) {
+            DS_LOG_ERROR("Could not get item");
+            break;
+        }
 
         if (item->options.long_name != NULL &&
             strcmp(long_name, item->options.long_name) == 0) {
@@ -2301,7 +2348,10 @@ char *ds_argparse_get_value(ds_argparse_parser *parser, char *long_name) {
 unsigned int ds_argparse_get_flag(ds_argparse_parser *parser, char *long_name) {
     for (unsigned int i = 0; i < parser->arguments.count; i++) {
         ds_argument *item = NULL;
-        ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item);
+        if (ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item) != 0) {
+            DS_LOG_ERROR("Could not get item");
+            break;
+        }
 
         if (item->options.long_name != NULL &&
             strcmp(long_name, item->options.long_name) == 0) {
@@ -2319,7 +2369,10 @@ DSHDEF int ds_argparse_get_values(struct ds_argparse_parser *parser,
                                   char *long_name, ds_dynamic_array *values) {
     for (unsigned int i = 0; i < parser->arguments.count; i++) {
         ds_argument *item = NULL;
-        ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item);
+        if (ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item) != 0) {
+            DS_LOG_ERROR("Could not get item");
+            break;
+        }
 
         if (item->options.long_name != NULL &&
             strcmp(long_name, item->options.long_name) == 0) {
@@ -2341,12 +2394,15 @@ DSHDEF int ds_argparse_get_values(struct ds_argparse_parser *parser,
 //
 // Arguments:
 // - parser: argument parser
-void ds_argparse_print_help(ds_argparse_parser *parser) {
+DSHDEF void ds_argparse_print_help(ds_argparse_parser *parser) {
     fprintf(stdout, "usage: %s [options]", parser->name);
 
     for (unsigned int i = 0; i < parser->arguments.count; i++) {
         ds_argument *item = NULL;
-        ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item);
+        if (ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item) != 0) {
+            DS_LOG_ERROR("Could not get item");
+            break;
+        }
 
         ds_argparse_options options = item->options;
 
@@ -2357,7 +2413,10 @@ void ds_argparse_print_help(ds_argparse_parser *parser) {
 
     for (unsigned int i = 0; i < parser->arguments.count; i++) {
         ds_argument *item = NULL;
-        ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item);
+        if (ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item) != 0) {
+            DS_LOG_ERROR("Could not get item");
+            break;
+        }
 
         ds_argparse_options options = item->options;
 
@@ -2372,7 +2431,10 @@ void ds_argparse_print_help(ds_argparse_parser *parser) {
 
     for (unsigned int i = 0; i < parser->arguments.count; i++) {
         ds_argument *item = NULL;
-        ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item);
+        if (ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item) != 0) {
+            DS_LOG_ERROR("Could not get item");
+            break;
+        }
 
         ds_argparse_options options = item->options;
 
@@ -2389,7 +2451,10 @@ void ds_argparse_print_help(ds_argparse_parser *parser) {
 
     for (unsigned int i = 0; i < parser->arguments.count; i++) {
         ds_argument *item = NULL;
-        ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item);
+        if (ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item) != 0) {
+            DS_LOG_ERROR("Could not get item");
+            break;
+        }
 
         ds_argparse_options options = item->options;
 
@@ -2409,7 +2474,10 @@ void ds_argparse_print_help(ds_argparse_parser *parser) {
 
     for (unsigned int i = 0; i < parser->arguments.count; i++) {
         ds_argument *item = NULL;
-        ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item);
+        if (ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item) != 0) {
+            DS_LOG_ERROR("Could not get item");
+            break;
+        }
 
         switch (item->options.type) {
         case ARGUMENT_TYPE_POSITIONAL: {

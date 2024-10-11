@@ -164,7 +164,9 @@ int a_star(struct world *w, struct position start, struct position end,
                 int found = 0;
                 for (unsigned int j = 0; j < open_set.items.count; j++) {
                     struct position_node *node = NULL;
-                    ds_dynamic_array_get_ref(&open_set.items, j, (void **)&node);
+                    if (ds_dynamic_array_get_ref(&open_set.items, j, (void **)&node) != 0) {
+                        DS_LOG_ERROR("Could not get node");
+                    }
 
                     if (position_equals(node->p, neighbor)) {
                         found = 1;
