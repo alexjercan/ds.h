@@ -12,6 +12,7 @@ Implemented Data Structures:
 - argument parser
 - allocator
 - io
+- json
 
 For your projects you just need to copy paste the `ds.h` file into your
 `src` and use this in the code
