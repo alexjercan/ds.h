@@ -110,8 +110,8 @@ DSHDEF int ds_dynamic_array_append_many(ds_dynamic_array *da, void **new_items,
                                         unsigned int new_items_count);
 DSHDEF int ds_dynamic_array_get(ds_dynamic_array *da, unsigned int index,
                                 void *item);
-DSHDEF void ds_dynamic_array_get_ref(ds_dynamic_array *da, unsigned int index,
-                                     void **item);
+DSHDEF int ds_dynamic_array_get_ref(ds_dynamic_array *da, unsigned int index,
+                                    void **item);
 DSHDEF int ds_dynamic_array_copy(ds_dynamic_array *da, ds_dynamic_array *copy);
 DSHDEF void ds_dynamic_array_sort(ds_dynamic_array *da,
                                   int (*compare)(const void *, const void *));
@@ -638,10 +638,14 @@ DSHDEF int ds_priority_queue_insert(ds_priority_queue *pq, void *item) {
     int parent = (index - 1) / 2;
 
     void *index_item = NULL;
-    ds_dynamic_array_get_ref(&pq->items, index, &index_item);
+    if (ds_dynamic_array_get_ref(&pq->items, index, &index_item) != 0) {
+        return_defer(1);
+    }
 
     void *parent_item = NULL;
-    ds_dynamic_array_get_ref(&pq->items, parent, &parent_item);
+    if (ds_dynamic_array_get_ref(&pq->items, parent, &parent_item) != 0) {
+        return_defer(1);
+    }
 
     while (index != 0 && pq->compare(index_item, parent_item) > 0) {
         ds_dynamic_array_swap(&pq->items, index, parent);
@@ -649,8 +653,12 @@ DSHDEF int ds_priority_queue_insert(ds_priority_queue *pq, void *item) {
         index = parent;
         parent = (index - 1) / 2;
 
-        ds_dynamic_array_get_ref(&pq->items, index, &index_item);
-        ds_dynamic_array_get_ref(&pq->items, parent, &parent_item);
+        if (ds_dynamic_array_get_ref(&pq->items, index, &index_item) != 0) {
+            return_defer(1);
+        }
+        if (ds_dynamic_array_get_ref(&pq->items, parent, &parent_item) != 0) {
+            return_defer(1);
+        }
     }
 
     return 0;
@@ -668,7 +676,9 @@ DSHDEF int ds_priority_queue_pull(ds_priority_queue *pq, void *item) {
         return_defer(1);
     }
 
-    ds_dynamic_array_get(&pq->items, 0, item);
+    if (ds_dynamic_array_get(&pq->items, 0, item) != 0) {
+        return_defer(1);
+    }
     ds_dynamic_array_swap(&pq->items, 0, pq->items.count - 1);
 
     unsigned int index = 0;
@@ -679,8 +689,12 @@ DSHDEF int ds_priority_queue_pull(ds_priority_queue *pq, void *item) {
 
         unsigned int left = 2 * index + 1;
         void *left_item = NULL;
-        ds_dynamic_array_get_ref(&pq->items, swap, &swap_item);
-        ds_dynamic_array_get_ref(&pq->items, left, &left_item);
+        if (ds_dynamic_array_get_ref(&pq->items, swap, &swap_item) != 0) {
+            return_defer(1);
+        }
+        if (ds_dynamic_array_get_ref(&pq->items, left, &left_item) != 0) {
+            return_defer(1);
+        }
         if (left < pq->items.count - 1 &&
             pq->compare(left_item, swap_item) > 0) {
             swap = left;
@@ -688,8 +702,12 @@ DSHDEF int ds_priority_queue_pull(ds_priority_queue *pq, void *item) {
 
         unsigned int right = 2 * index + 2;
         void *right_item = NULL;
-        ds_dynamic_array_get_ref(&pq->items, swap, &swap_item);
-        ds_dynamic_array_get_ref(&pq->items, right, &right_item);
+        if (ds_dynamic_array_get_ref(&pq->items, swap, &swap_item) != 0) {
+            return_defer(1);
+        }
+        if (ds_dynamic_array_get_ref(&pq->items, right, &right_item) != 0) {
+            return_defer(1);
+        }
         if (right < pq->items.count - 1 &&
             pq->compare(right_item, swap_item) > 0) {
             swap = right;
@@ -715,7 +733,9 @@ DSHDEF int ds_priority_queue_peek(ds_priority_queue *pq, void *item) {
         return_defer(1);
     }
 
-    ds_dynamic_array_get(&pq->items, 0, item);
+    if (ds_dynamic_array_get(&pq->items, 0, item) != 0) {
+        return_defer(1);
+    }
 
 defer:
     return result;
@@ -1158,9 +1178,19 @@ defer:
 }
 
 // Get a reference to an item from the dynamic array
-DSHDEF void ds_dynamic_array_get_ref(ds_dynamic_array *da, unsigned int index,
-                                     void **item) {
+DSHDEF int ds_dynamic_array_get_ref(ds_dynamic_array *da, unsigned int index,
+                                    void **item) {
+    int result = 0;
+
+    if (index >= da->count) {
+        DS_LOG_ERROR("Index out of bounds");
+        return_defer(1);
+    }
+
     *item = (char *)da->items + index * da->item_size;
+
+defer:
+    return result;
 }
 
 // Copy the dynamic array to another dynamic array
@@ -1566,7 +1596,9 @@ DSHDEF int ds_hashmap_get(ds_hashmap *map, ds_hashmap_kv *kv) {
 
     for (int i = 0; bucket->count; i++) {
         ds_hashmap_kv tmp = {0};
-        ds_dynamic_array_get(bucket, i, &tmp);
+        if (ds_dynamic_array_get(bucket, i, &tmp) != 0) {
+            return_defer(1);
+        }
 
         if (map->compare(kv->key, tmp.key) == 0) {
             kv->value = tmp.value;
@@ -1596,7 +1628,9 @@ DSHDEF int ds_hashmap_delete(ds_hashmap *map, const void *key) {
 
     for (int i = 0; bucket->count; i++) {
         ds_hashmap_kv tmp = {0};
-        ds_dynamic_array_get(bucket, i, &tmp);
+        if (ds_dynamic_array_get(bucket, i, &tmp) != 0) {
+            return_defer(1);
+        }
 
         if (map->compare(key, tmp.key) == 0) {
             ds_dynamic_array_delete(bucket, i);
