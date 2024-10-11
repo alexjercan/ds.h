@@ -260,6 +260,7 @@ DSHDEF int ds_hashmap_init(ds_hashmap *map, unsigned int capacity,
 DSHDEF int ds_hashmap_insert(ds_hashmap *map, ds_hashmap_kv *kv);
 DSHDEF int ds_hashmap_get(ds_hashmap *map, ds_hashmap_kv *kv);
 DSHDEF int ds_hashmap_delete(ds_hashmap *map, const void *key);
+DSHDEF unsigned int ds_hashmap_count(ds_hashmap *map);
 DSHDEF void ds_hashmap_free(ds_hashmap *map);
 
 // ARGUMENT PARSER
@@ -362,6 +363,7 @@ typedef struct json_object {
 } json_object;
 
 DSHDEF int json_object_load(char *buffer, unsigned int buffer_len, json_object *object);
+DSHDEF int json_object_dump(json_object *object, char **buffer);
 DSHDEF int json_object_debug(json_object *object);
 DSHDEF int json_object_free(json_object *object);
 
@@ -1983,6 +1985,19 @@ defer:
     return result;
 }
 
+// Get the number of key value pairs in the hashmap.
+//
+// Returns the number of items.
+DSHDEF unsigned int ds_hashmap_count(ds_hashmap *map) {
+    unsigned int count = 0;
+
+    for (unsigned int i = 0; i < map->capacity; i++) {
+        count += map->buckets[i].count;
+    }
+
+    return count;
+}
+
 // Free the hashmap (this does not free the values or the keys)
 DSHDEF void ds_hashmap_free(ds_hashmap *map) {
     for (unsigned int i = 0; i < map->capacity; i++) {
@@ -3258,7 +3273,120 @@ defer:
     return result;
 }
 
+static int json_object_dump_indent(json_object *object, unsigned int indent, const char *prefix, const char *ending, ds_string_builder *sb) {
+    int result = 0;
+    unsigned int count = 0;
+
+    if (prefix != NULL) {
+        if (ds_string_builder_append(sb, "%s", prefix) != 0) {
+            DS_LOG_ERROR("Failed to append string");
+            return_defer(1);
+        }
+    } else {
+        if (ds_string_builder_append(sb, "%*s", indent, "") != 0) {
+            DS_LOG_ERROR("Failed to append string");
+            return_defer(1);
+        }
+    }
+
+    switch (object->kind) {
+    case JSON_OBJECT_STRING:
+        if (ds_string_builder_append(sb, "\"%s\"%s", object->string, ending) != 0) {
+            DS_LOG_ERROR("Failed to append string");
+            return_defer(1);
+        }
+        break;
+    case JSON_OBJECT_NUMBER:
+        if (ds_string_builder_append(sb, "%f%s", object->number, ending) != 0) {
+            DS_LOG_ERROR("Failed to append string");
+            return_defer(1);
+        }
+        break;
+    case JSON_OBJECT_BOOLEAN:
+        if (ds_string_builder_append(sb, "%s%s", object->boolean == true ? "true" : "false", ending) != 0) {
+            DS_LOG_ERROR("Failed to append string");
+            return_defer(1);
+        }
+        break;
+    case JSON_OBJECT_NULL:
+        if (ds_string_builder_append(sb, "null%s", ending) != 0) {
+            DS_LOG_ERROR("Failed to append string");
+            return_defer(1);
+        }
+        break;
+    case JSON_OBJECT_ARRAY:
+        if (ds_string_builder_append(sb, "[\n") != 0) {
+            DS_LOG_ERROR("Failed to append string");
+            return_defer(1);
+        }
+        for (int i = 0; i < object->array.count; i++) {
+            json_object item = {0};
+            if (ds_dynamic_array_get(&object->array, i, &item) != 0) {
+                DS_LOG_ERROR("Failed to get item from array");
+                return_defer(1);
+            }
+
+            if (json_object_dump_indent(&item, indent + JSON_OBJECT_DUMP_INDENT, NULL, "", sb) != 0) {
+                return_defer(1);
+            }
+
+            if (i < object->array.count - 1) {
+                if (ds_string_builder_append(sb, ",\n") != 0) {
+                    DS_LOG_ERROR("Failed to append string");
+                    return_defer(1);
+                }
+            }
+        }
+        if (ds_string_builder_append(sb, "\n%*s]%s", indent, "", ending) != 0) {
+            DS_LOG_ERROR("Failed to append string");
+            return_defer(1);
+        }
+        break;
+    case JSON_OBJECT_MAP:
+        count = ds_hashmap_count(&object->map);
+        if (ds_string_builder_append(sb, "{\n") != 0) {
+            DS_LOG_ERROR("Failed to append string");
+            return_defer(1);
+        }
+        for (int i = 0, index = 0; i < object->map.capacity; i++) {
+            ds_dynamic_array bucket = object->map.buckets[i];
+
+            for (int j = 0; j < bucket.count; j++) {
+                ds_hashmap_kv kv = {0};
+                if (ds_dynamic_array_get(&bucket, j, &kv) != 0) {
+                    DS_LOG_ERROR("Failed to get item from array");
+                    return_defer(1);
+                }
+
+                if (ds_string_builder_append(sb, "%*s\"%s\":", indent + JSON_OBJECT_DUMP_INDENT, "", (char *)kv.key) != 0) {
+                    DS_LOG_ERROR("Failed to append string");
+                    return_defer(1);
+                }
+                if (json_object_dump_indent((json_object*)kv.value, indent + JSON_OBJECT_DUMP_INDENT, " ", "", sb) != 0) {
+                    DS_LOG_ERROR("Failed to dump value");
+                    return_defer(1);
+                }
+
+                index += 1;
+                if (index < count ) {
+                    ds_string_builder_append(sb, ",\n");
+                }
+            }
+        }
+        if (ds_string_builder_append(sb, "\n%*s}%s", indent, "", ending) != 0) {
+            DS_LOG_ERROR("Failed to append string");
+            return_defer(1);
+        }
+        break;
+    }
+
+defer:
+    return result;
+}
+
+// Load json object from a string
 //
+// Returns 0 if parsing successful. Returns 1 if it failed
 DSHDEF int json_object_load(char *buffer, unsigned int buffer_len, json_object *object) {
     int result = 0;
     json_lexer lexer = {0};
@@ -3278,12 +3406,40 @@ defer:
     return result;
 }
 
+// Show a debug view of the JSON AST
 //
+// Returns 0 if debug is ok. Returns 1 if it failed
 DSHDEF int json_object_debug(json_object *object) {
     return json_object_debug_indent(object, 0);
 }
 
+// Print the JSON into a string
 //
+// Returns 0 if dump is ok. Returns 1 if it failed
+DSHDEF int json_object_dump(json_object *object, char **buffer) {
+    int result = 0;
+    ds_string_builder sb = {0};
+
+    ds_string_builder_init(&sb);
+
+    if (json_object_dump_indent(object, 0, NULL, "\n", &sb) != 0) {
+        DS_LOG_ERROR("Failed to dump indent");
+        return_defer(1);
+    }
+
+    if (ds_string_builder_build(&sb, buffer) != 0) {
+        DS_LOG_ERROR("Failed to build string");
+        return_defer(1);
+    }
+
+defer:
+    ds_string_builder_free(&sb);
+    return result;
+}
+
+// Free the JSON object
+//
+// Returns 0 if free is ok. Returns 1 if it failed
 DSHDEF int json_object_free(json_object *object) {
     int result = 0;
 
