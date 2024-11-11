@@ -70,6 +70,10 @@
 
 // BASIC UTILS
 
+// TODO: Update with OK and ERR
+#define DS_OK 0
+#define DS_ERR 1
+
 typedef int bool;
 const bool true = 1;
 const bool false = 0;
@@ -183,6 +187,8 @@ typedef struct ds_string_slice {
         unsigned int len;
 } ds_string_slice;
 
+#define DS_STRING_SLICE(string) ((ds_string_slice){.str = string, .len = strlen((string))})
+
 DSHDEF void ds_string_slice_init_allocator(ds_string_slice *ss, char *str,
                                            unsigned int len,
                                            struct ds_allocator *allocator);
@@ -197,11 +203,14 @@ DSHDEF int ds_string_slice_trim_left(ds_string_slice *ss, char chr);
 DSHDEF int ds_string_slice_trim_right(ds_string_slice *ss, char chr);
 DSHDEF int ds_string_slice_trim(ds_string_slice *ss, char chr);
 DSHDEF int ds_string_slice_to_owned(ds_string_slice *ss, char **str);
+DSHDEF bool ds_string_slice_equals(ds_string_slice *ss, ds_string_slice *so);
 DSHDEF bool ds_string_slice_starts_with(ds_string_slice *ss, ds_string_slice *prefix);
 DSHDEF bool ds_string_slice_starts_with_pred(ds_string_slice *ss, bool (*predicate)(char));
 DSHDEF int ds_string_slice_step(ds_string_slice *ss, int count);
 DSHDEF bool ds_string_slice_empty(ds_string_slice *ss);
 DSHDEF void ds_string_slice_free(ds_string_slice *ss);
+
+DSHDEF void ds_string_builder_to_slice(ds_string_builder *sb, ds_string_slice *ss);
 
 // (DOUBLY) LINKED LIST
 //
@@ -399,6 +408,20 @@ DSHDEF int json_object_free(json_object *object);
 #define NULL 0
 #endif
 
+#define DS_MIN(a, b)                                                           \
+  ({                                                                           \
+    __typeof__(a) _a = (a);                                                    \
+    __typeof__(b) _b = (b);                                                    \
+    _a < _b ? _a : _b;                                                         \
+  })
+
+#define DS_MAX(a, b)                                                           \
+  ({                                                                           \
+    __typeof__(a) _a = (a);                                                    \
+    __typeof__(b) _b = (b);                                                    \
+    _a > _b ? _a : _b;                                                         \
+  })
+
 #if defined(DS_MEMCPY)
 // ok
 #elif !defined(DS_MEMCPY) && !defined(DS_NO_STDLIB)
@@ -567,6 +590,18 @@ static inline void *ds_realloc(void *a, void *ptr, unsigned int old_sz,
         DS_EXIT(1);                                                            \
     } while (0)
 #endif
+
+#define DS_ERROR_OOM "Buy more RAM!"
+#define DS_ERROR_UNREACHABLE "unreachable"
+
+#define DS_EXPECT(result, message)                                             \
+  do {                                                                         \
+    if ((result) != DS_OK) {                                                   \
+      DS_PANIC(message);                                                       \
+    }                                                                          \
+  } while (0)
+
+#define DS_UNREACHABLE(result) DS_EXPECT((result), DS_ERROR_UNREACHABLE)
 
 // DYNAMIC ARRAY
 //
@@ -1206,6 +1241,8 @@ DSHDEF void ds_dynamic_array_free(ds_dynamic_array *da) {
     if (da->items != NULL) {
         DS_FREE(da->allocator, da->items);
     }
+
+    da->allocator = NULL;
     da->items = NULL;
     da->count = 0;
     da->capacity = 0;
@@ -1452,6 +1489,13 @@ defer:
     return result;
 }
 
+// Consumes the string builder into a string slice
+DSHDEF void ds_string_builder_to_slice(ds_string_builder *sb, ds_string_slice *ss) {
+    ss->str = (char *)sb->items.items;
+    ss->len = sb->items.count;
+    ss->allocator = sb->items.allocator;
+}
+
 // Free the string builder
 DSHDEF void ds_string_builder_free(ds_string_builder *sb) {
     ds_dynamic_array_free(&sb->items);
@@ -1629,7 +1673,14 @@ defer:
     return result;
 }
 
-// Check if the string slice starts with a specific string given as a char*
+// Check if the string slice is equal to a specific string
+//
+// Returns 1 in case the string slice equals str. Returns 0 otherwise
+DSHDEF bool ds_string_slice_equals(ds_string_slice *ss, ds_string_slice *so) {
+    return ss->len == so->len && DS_MEMCMP(ss->str, so->str, ss->len) == 0;
+}
+
+// Check if the string slice starts with a specific string
 //
 // Returns 1 in case the string slice starts with str. Returns 0 otherwise
 DSHDEF bool ds_string_slice_starts_with(ds_string_slice *ss, ds_string_slice *prefix) {
@@ -1658,6 +1709,7 @@ DSHDEF bool ds_string_slice_empty(ds_string_slice *ss) {
 
 // Free the string slice
 DSHDEF void ds_string_slice_free(ds_string_slice *ss) {
+    ss->allocator = NULL;
     ss->str = NULL;
     ss->len = 0;
 }
@@ -1856,6 +1908,9 @@ DSHDEF void ds_linked_list_free(ds_linked_list *ll) {
         DS_FREE(ll->allocator, node);
         node = next;
     }
+
+    ll->allocator = NULL;
+    ll->item_size = 0;
     ll->head = NULL;
     ll->tail = NULL;
 }
@@ -2007,6 +2062,12 @@ DSHDEF void ds_hashmap_free(ds_hashmap *map) {
     if (map->buckets != NULL) {
         DS_FREE(map->allocator, map->buckets);
     }
+
+    map->allocator = NULL;
+    map->buckets = NULL;
+    map->capacity = 0;
+    map->hash = NULL;
+    map->compare = NULL;
 }
 
 #endif // DS_HM_IMPLEMENTATION
@@ -2600,6 +2661,11 @@ DSHDEF void ds_argparse_print_version(ds_argparse_parser *parser) {
 // - parser: argument parser
 DSHDEF void ds_argparse_parser_free(ds_argparse_parser *parser) {
     ds_dynamic_array_free(&parser->arguments);
+
+    parser->allocator = NULL;
+    parser->name = NULL;
+    parser->description = NULL;
+    parser->version = NULL;
 }
 
 #endif // DS_AP_IMPLEMENTATION
