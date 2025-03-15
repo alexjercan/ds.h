@@ -75,8 +75,8 @@
 #define DS_ERR 1
 
 typedef int bool;
-const bool true = 1;
-const bool false = 0;
+#define true 1
+#define false 0
 
 // ALLOCATOR
 //
