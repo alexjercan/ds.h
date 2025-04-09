@@ -87,7 +87,7 @@
 #endif
 
 // Return codes
-typedef int DS_RESULT;
+typedef int ds_result;
 #define DS_OK 0
 #define DS_ERR 1
 
@@ -251,6 +251,22 @@ DSHDEF void ds_list_allocator_dump(ds_list_allocator allocator);
 #define DS_DUMP_ALLOCATOR(allocator)
 #endif
 
+// DS_MAX
+//
+// The DS_MAX macro is used to get the maximum of two values
+#if defined(DS_MAX) // ok
+#else
+#define DS_MAX(a, b) ((a) > (b) ? (a) : (b))
+#endif
+
+// DS_MIN
+//
+// The DS_MIN macro is used to get the minimum of two values
+#if defined(DS_MIN) // ok
+#else
+#define DS_MIN(a, b) ((a) < (b) ? (a) : (b))
+#endif
+
 // DS_MEMCPY
 //
 // The DS_MEMCPY macro is used to copy memory
@@ -266,6 +282,9 @@ DSHDEF void ds_list_allocator_dump(ds_list_allocator allocator);
     } while (0)
 #endif // DS_MEMCPY
 
+// DS_MEMCMP
+//
+// The DS_MEMCMP macro is used to compare memory
 #if defined(DS_MEMCMP) // ok
 #elif !defined(DS_NO_STDLIB)
 #define DS_MEMCMP(ptr1, ptr2, sz) memcmp(ptr1, ptr2, sz)
@@ -283,6 +302,9 @@ DSHDEF void ds_list_allocator_dump(ds_list_allocator allocator);
     })
 #endif
 
+// DS_STRLEN
+//
+// The DS_STRLEN macro is used to get the length of a string
 #if defined(DS_STRLEN) // ok
 #elif !defined(DS_NO_STDLIB)
 #define DS_STRLEN(str) strlen(str)
@@ -295,6 +317,16 @@ DSHDEF void ds_list_allocator_dump(ds_list_allocator allocator);
         }                                                                      \
         len;                                                                   \
     })
+#endif
+
+// DS_STRCMP
+//
+// The DS_STRCMP macro is used to compare two strings
+#if defined(DS_STRCMP) // ok
+#elif !defined(DS_NO_STDLIB)
+#define DS_STRCMP(str1, str2) strcmp(str1, str2)
+#elif defined(DS_NO_STDLIB)
+#define DS_STRCMP(str1, str2) DS_MEMCMP(str1, str2, DS_MIN(DS_STRLEN(str1), DS_STRLEN(str2)))
 #endif
 
 static inline void *allocator_realloc(void *allocator, void *ptr, unsigned long old_sz, unsigned long new_sz) {
@@ -466,25 +498,25 @@ DSHDEF void ds_dynamic_array_init_allocator(ds_dynamic_array *da,
                                             DS_ALLOCATOR *allocator);
 DSHDEF void ds_dynamic_array_init(ds_dynamic_array *da,
                                   unsigned long item_size);
-DSHDEF DS_RESULT ds_dynamic_array_append(ds_dynamic_array *da,
+DSHDEF ds_result ds_dynamic_array_append(ds_dynamic_array *da,
                                          const void *item);
-DSHDEF DS_RESULT ds_dynamic_array_pop(ds_dynamic_array *da, const void **item);
-DSHDEF DS_RESULT ds_dynamic_array_append_many(ds_dynamic_array *da,
+DSHDEF ds_result ds_dynamic_array_pop(ds_dynamic_array *da, const void **item);
+DSHDEF ds_result ds_dynamic_array_append_many(ds_dynamic_array *da,
                                               void **new_items,
                                               unsigned long new_items_count);
-DSHDEF DS_RESULT ds_dynamic_array_get(ds_dynamic_array *da, unsigned long index,
+DSHDEF ds_result ds_dynamic_array_get(ds_dynamic_array *da, unsigned long index,
                                       void *item);
-DSHDEF DS_RESULT ds_dynamic_array_get_ref(ds_dynamic_array *da,
+DSHDEF ds_result ds_dynamic_array_get_ref(ds_dynamic_array *da,
                                           unsigned long index, void **item);
-DSHDEF DS_RESULT ds_dynamic_array_copy(ds_dynamic_array *da,
+DSHDEF ds_result ds_dynamic_array_copy(ds_dynamic_array *da,
                                        ds_dynamic_array *copy);
 DSHDEF void ds_dynamic_array_sort(ds_dynamic_array *da,
                                   int (*compare)(const void *, const void *));
-DSHDEF DS_RESULT ds_dynamic_array_reverse(ds_dynamic_array *da);
-DSHDEF DS_RESULT ds_dynamic_array_swap(ds_dynamic_array *da,
+DSHDEF ds_result ds_dynamic_array_reverse(ds_dynamic_array *da);
+DSHDEF ds_result ds_dynamic_array_swap(ds_dynamic_array *da,
                                        unsigned long index1,
                                        unsigned long index2);
-DSHDEF DS_RESULT ds_dynamic_array_delete(ds_dynamic_array *da,
+DSHDEF ds_result ds_dynamic_array_delete(ds_dynamic_array *da,
                                          unsigned long index);
 DSHDEF void ds_dynamic_array_free(ds_dynamic_array *da);
 
@@ -516,7 +548,7 @@ DSHDEF void ds_string_slice_trim_right_ws(ds_string_slice *ss);
 DSHDEF void ds_string_slice_trim_left(ds_string_slice *ss, char chr);
 DSHDEF void ds_string_slice_trim_right(ds_string_slice *ss, char chr);
 DSHDEF void ds_string_slice_trim(ds_string_slice *ss, char chr);
-DSHDEF DS_RESULT ds_string_slice_to_owned(ds_string_slice *ss, char **str);
+DSHDEF ds_result ds_string_slice_to_owned(ds_string_slice *ss, char **str);
 DSHDEF boolean ds_string_slice_equals(ds_string_slice *ss, ds_string_slice *so);
 DSHDEF boolean ds_string_slice_starts_with(ds_string_slice *ss,
                                            ds_string_slice *prefix);
@@ -538,12 +570,12 @@ typedef struct ds_string_builder {
 DSHDEF void ds_string_builder_init_allocator(ds_string_builder *sb,
                                              DS_ALLOCATOR *allocator);
 DSHDEF void ds_string_builder_init(ds_string_builder *sb);
-DSHDEF DS_RESULT ds_string_builder_append(ds_string_builder *sb,
+DSHDEF ds_result ds_string_builder_append(ds_string_builder *sb,
                                           const char *format, ...);
-DSHDEF DS_RESULT ds_string_builder_appendn(ds_string_builder *sb,
+DSHDEF ds_result ds_string_builder_appendn(ds_string_builder *sb,
                                            const char *str, unsigned long len);
-DSHDEF DS_RESULT ds_string_builder_appendc(ds_string_builder *sb, char chr);
-DSHDEF DS_RESULT ds_string_builder_build(ds_string_builder *sb, char **str);
+DSHDEF ds_result ds_string_builder_appendc(ds_string_builder *sb, char chr);
+DSHDEF ds_result ds_string_builder_build(ds_string_builder *sb, char **str);
 DSHDEF void ds_string_builder_to_slice(ds_string_builder *sb, ds_string_slice *ss);
 DSHDEF void ds_string_builder_free(ds_string_builder *sb);
 
@@ -577,9 +609,9 @@ DSHDEF void ds_priority_queue_init_allocator(
 DSHDEF void ds_priority_queue_init(ds_priority_queue *pq,
                                    int (*compare)(const void *, const void *),
                                    unsigned long item_size);
-DSHDEF DS_RESULT ds_priority_queue_insert(ds_priority_queue *pq, void *item);
-DSHDEF DS_RESULT ds_priority_queue_pull(ds_priority_queue *pq, void *item);
-DSHDEF DS_RESULT ds_priority_queue_peek(ds_priority_queue *pq, void *item);
+DSHDEF ds_result ds_priority_queue_insert(ds_priority_queue *pq, void *item);
+DSHDEF ds_result ds_priority_queue_pull(ds_priority_queue *pq, void *item);
+DSHDEF ds_result ds_priority_queue_peek(ds_priority_queue *pq, void *item);
 DSHDEF boolean ds_priority_queue_empty(ds_priority_queue *pq);
 DSHDEF void ds_priority_queue_free(ds_priority_queue *pq);
 
@@ -604,18 +636,146 @@ DSHDEF void ds_linked_list_init_allocator(ds_linked_list *ll,
                                           unsigned long item_size,
                                           DS_ALLOCATOR *allocator);
 DSHDEF void ds_linked_list_init(ds_linked_list *ll, unsigned long item_size);
-DSHDEF DS_RESULT ds_linked_list_push_back(ds_linked_list *ll, void *item);
-DSHDEF DS_RESULT ds_linked_list_push_front(ds_linked_list *ll, void *item);
-DSHDEF DS_RESULT ds_linked_list_pop_back(ds_linked_list *ll, void *item);
-DSHDEF DS_RESULT ds_linked_list_pop_front(ds_linked_list *ll, void *item);
+DSHDEF ds_result ds_linked_list_push_back(ds_linked_list *ll, void *item);
+DSHDEF ds_result ds_linked_list_push_front(ds_linked_list *ll, void *item);
+DSHDEF ds_result ds_linked_list_pop_back(ds_linked_list *ll, void *item);
+DSHDEF ds_result ds_linked_list_pop_front(ds_linked_list *ll, void *item);
 DSHDEF boolean ds_linked_list_empty(ds_linked_list *ll);
 DSHDEF void ds_linked_list_free(ds_linked_list *ll);
 
-#endif // DS_H
+// HASH MAP
+//
+// The hash map is a simple table that uses a hash function to store and
+// retrieve items. The hash map uses buckets to handle collisions.
+// You can define the hash and compare functions to use when inserting and
+// retrieving items.
+typedef struct ds_hashmap_kv {
+    void *key;
+    void *value;
+} ds_hashmap_kv;
 
-#ifdef DS_PQ_IMPLEMENTATION
-#define DS_DA_IMPLEMENTATION
-#endif // DS_PQ_IMPLEMENTATION
+typedef struct ds_hashmap {
+    DS_ALLOCATOR *allocator;
+    ds_dynamic_array *buckets; /* ds_hashmap_kv */
+    unsigned long capacity;
+    unsigned long (*hash)(const void *);
+    int (*compare)(const void *, const void *);
+} ds_hashmap;
+
+DSHDEF ds_result ds_hashmap_init_allocator(
+    ds_hashmap *map, unsigned long capacity,
+    unsigned long (*hash)(const void *),
+    int (*compare)(const void *, const void *), DS_ALLOCATOR *allocator);
+DSHDEF ds_result ds_hashmap_init(ds_hashmap *map, unsigned long capacity,
+                                 unsigned long (*hash)(const void *),
+                                 int (*compare)(const void *, const void *));
+DSHDEF ds_result ds_hashmap_insert(ds_hashmap *map, ds_hashmap_kv *kv);
+DSHDEF ds_result ds_hashmap_get(ds_hashmap *map, ds_hashmap_kv *kv);
+DSHDEF ds_result ds_hashmap_delete(ds_hashmap *map, const void *key);
+DSHDEF unsigned long ds_hashmap_count(ds_hashmap *map);
+DSHDEF void ds_hashmap_free(ds_hashmap *map);
+
+// ARGUMENT PARSER
+//
+// The ds_argument parser is a simple utility to parse command line arguments.
+// You can define the options and arguments to parse, and then parse the command
+// line arguments.
+// Argument types
+enum ds_argument_type {
+    ARGUMENT_TYPE_VALUE,           // Argument with a value
+    ARGUMENT_TYPE_FLAG,            // Flag ds_argument
+    ARGUMENT_TYPE_POSITIONAL,      // Positional ds_argument
+    ARGUMENT_TYPE_POSITIONAL_REST, // Positional ds_argument that consumes the
+                                   // rest
+    ARGUMENT_TYPE_VALUE_ARRAY,     // Argument with an array of values
+};
+
+// Argument options
+typedef struct ds_argparse_options {
+    char short_name;            // Short name of the ds_argument
+    char *long_name;            // Long name of the ds_argument
+    char *description;          // Description of the ds_argument
+    enum ds_argument_type type; // Type of the ds_argument
+    boolean required;      // Whether the ds_argument is required
+} ds_argparse_options;
+
+// Argument
+typedef struct ds_argument {
+    struct ds_argparse_options options;
+    union {
+        char *value;
+        unsigned int flag;
+        ds_dynamic_array values;
+    };
+} ds_argument;
+
+typedef struct ds_argparse_parser {
+    DS_ALLOCATOR *allocator;
+    char *name;
+    char *description;
+    char *version;
+    ds_dynamic_array arguments; // ds_argument
+} ds_argparse_parser;
+
+DSHDEF void ds_argparse_parser_init_allocator(ds_argparse_parser *parser,
+                                              char *name, char *description,
+                                              char *version,
+                                              DS_ALLOCATOR *allocator);
+DSHDEF void ds_argparse_parser_init(ds_argparse_parser *parser, char *name,
+                                    char *description, char *version);
+DSHDEF ds_result ds_argparse_add_argument(ds_argparse_parser *parser,
+                                          ds_argparse_options options);
+DSHDEF ds_result ds_argparse_parse(ds_argparse_parser *parser, int argc,
+                                   char **argv);
+DSHDEF char *ds_argparse_get_value(ds_argparse_parser *parser, char *name);
+DSHDEF unsigned int ds_argparse_get_flag(ds_argparse_parser *parser,
+                                         char *name);
+DSHDEF ds_result ds_argparse_get_values(ds_argparse_parser *parser, char *name,
+                                        ds_dynamic_array *values);
+DSHDEF void ds_argparse_print_help(ds_argparse_parser *parser);
+DSHDEF void ds_argparse_print_version(ds_argparse_parser *parser);
+DSHDEF void ds_argparse_parser_free(ds_argparse_parser *parser);
+
+// JSON
+//
+// Json loader from string. This utility will load a string into a JSON Object
+// data structure. The allowed json objects are mappings, arrays, string,
+// numbers, null or boolean.
+
+typedef enum {
+    DS_JSON_OBJECT_STRING,
+    DS_JSON_OBJECT_NUMBER,
+    DS_JSON_OBJECT_BOOLEAN,
+    DS_JSON_OBJECT_NULL,
+    DS_JSON_OBJECT_ARRAY,
+    DS_JSON_OBJECT_MAP
+} ds_json_object_kind;
+
+typedef struct ds_json_object {
+    ds_json_object_kind kind;
+    union {
+        char *string;
+        double number;
+        boolean boolean;
+        ds_dynamic_array array; /* ds_json_object */
+        ds_hashmap map; /* <char* , ds_json_object> */
+    };
+} ds_json_object;
+
+#ifndef DS_JSON_OBJECT_DUMP_INDENT
+#define DS_JSON_OBJECT_DUMP_INDENT 2
+#endif // DS_JSON_OBJECT_DUMP_INDENT
+
+#ifndef DS_JSON_OBJECT_MAP_MAX_CAPACITY
+#define DS_JSON_OBJECT_MAP_MAX_CAPACITY 100
+#endif // DS_JSON_OBJECT_MAP_MAX_CAPACITY
+
+DSHDEF ds_result ds_json_object_load(char *buffer, unsigned long buffer_len, ds_json_object *object);
+DSHDEF ds_result ds_json_object_dump(ds_json_object *object, char **buffer);
+DSHDEF ds_result ds_json_object_debug(ds_json_object *object);
+DSHDEF ds_result ds_json_object_free(ds_json_object *object);
+
+#endif // DS_H
 
 #ifdef DS_IO_IMPLEMENTATION
 #define DS_SB_IMPLEMENTATION
@@ -624,6 +784,18 @@ DSHDEF void ds_linked_list_free(ds_linked_list *ll);
 #ifdef DS_SB_IMPLEMENTATION
 #define DS_DA_IMPLEMENTATION
 #endif // DS_SB_IMPLEMENTATION
+
+#ifdef DS_HM_IMPLEMENTATION
+#define DS_DA_IMPLEMENTATION
+#endif // DS_HM_IMPLEMENTATION
+
+#ifdef DS_PQ_IMPLEMENTATION
+#define DS_DA_IMPLEMENTATION
+#endif // DS_PQ_IMPLEMENTATION
+
+#ifdef DS_AP_IMPLEMENTATION
+#define DS_DA_IMPLEMENTATION
+#endif // DS_AP_IMPLEMENTATION
 
 #ifdef DS_ARENA_ALLOCATOR_IMPLEMENTATION
 
@@ -793,9 +965,9 @@ DSHDEF void ds_dynamic_array_init(ds_dynamic_array *da,
 //
 // Returns 0 if the item was appended successfully, 1 if the array could not be
 // reallocated.
-DSHDEF DS_RESULT ds_dynamic_array_append(ds_dynamic_array *da,
+DSHDEF ds_result ds_dynamic_array_append(ds_dynamic_array *da,
                                          const void *item) {
-    DS_RESULT result = DS_OK;
+    ds_result result = DS_OK;
 
     if (da->count >= da->capacity) {
         unsigned long new_capacity = da->capacity * 2;
@@ -827,8 +999,8 @@ defer:
 //
 // Returns 0 if the item was popped successfully, 1 if the array is empty.
 // If the item is NULL, then we just pop the item without returning it.
-DSHDEF DS_RESULT ds_dynamic_array_pop(ds_dynamic_array *da, const void **item) {
-    DS_RESULT result = DS_OK;
+DSHDEF ds_result ds_dynamic_array_pop(ds_dynamic_array *da, const void **item) {
+    ds_result result = DS_OK;
 
     if (da->count == 0) {
         DS_LOG_ERROR("Dynamic array is empty");
@@ -849,10 +1021,10 @@ defer:
 //
 // Returns 0 if the items were appended successfully, 1 if the array could not
 // be reallocated.
-DSHDEF DS_RESULT ds_dynamic_array_append_many(ds_dynamic_array *da,
+DSHDEF ds_result ds_dynamic_array_append_many(ds_dynamic_array *da,
                                               void **new_items,
                                               unsigned long new_items_count) {
-    DS_RESULT result = DS_OK;
+    ds_result result = DS_OK;
 
     if (da->count + new_items_count > da->capacity) {
         if (da->capacity == 0) {
@@ -883,9 +1055,9 @@ defer:
 //
 // Returns 0 if the item was retrieved successfully, 1 if the index is out of
 // bounds.
-DSHDEF DS_RESULT ds_dynamic_array_get(ds_dynamic_array *da, unsigned long index,
+DSHDEF ds_result ds_dynamic_array_get(ds_dynamic_array *da, unsigned long index,
                                       void *item) {
-    DS_RESULT result = DS_OK;
+    ds_result result = DS_OK;
 
     if (index >= da->count) {
         DS_LOG_ERROR("Index out of bounds");
@@ -899,9 +1071,9 @@ defer:
 }
 
 // Get a reference to an item from the dynamic array
-DSHDEF DS_RESULT ds_dynamic_array_get_ref(ds_dynamic_array *da,
+DSHDEF ds_result ds_dynamic_array_get_ref(ds_dynamic_array *da,
                                           unsigned long index, void **item) {
-    DS_RESULT result = DS_OK;
+    ds_result result = DS_OK;
 
     if (index >= da->count) {
         DS_LOG_ERROR("Index out of bounds %d %d", index, da->count);
@@ -918,9 +1090,9 @@ defer:
 //
 // Returns 0 if the array was copied successfully, 1 if the array could not be
 // allocated.
-DSHDEF DS_RESULT ds_dynamic_array_copy(ds_dynamic_array *da,
+DSHDEF ds_result ds_dynamic_array_copy(ds_dynamic_array *da,
                                        ds_dynamic_array *copy) {
-    DS_RESULT result = DS_OK;
+    ds_result result = DS_OK;
 
     copy->items = DS_MALLOC(da->allocator, da->capacity * da->item_size);
     if (copy->items == NULL) {
@@ -950,8 +1122,8 @@ DSHDEF void ds_dynamic_array_sort(ds_dynamic_array *da,
 //
 // Returns 0 if the array was reversed successfully, 1 if the array could not be
 // allocated.
-DSHDEF DS_RESULT ds_dynamic_array_reverse(ds_dynamic_array *da) {
-    DS_RESULT result = DS_OK;
+DSHDEF ds_result ds_dynamic_array_reverse(ds_dynamic_array *da) {
+    ds_result result = DS_OK;
 
     for (unsigned long i = 0; i < da->count / 2; i++) {
         unsigned long j = da->count - i - 1;
@@ -970,10 +1142,10 @@ defer:
 //
 // Returns 0 if the items were swapped successfully, 1 if the index is out of
 // bounds or if the temporary item could not be allocated.
-DSHDEF DS_RESULT ds_dynamic_array_swap(ds_dynamic_array *da,
+DSHDEF ds_result ds_dynamic_array_swap(ds_dynamic_array *da,
                                        unsigned long index1,
                                        unsigned long index2) {
-    DS_RESULT result = DS_OK;
+    ds_result result = DS_OK;
 
     if (index1 >= da->count || index2 >= da->count) {
         DS_LOG_ERROR("Index out of bounds");
@@ -1016,9 +1188,9 @@ defer:
 // Delete an item from the dynamic array
 //
 // Returns 0 in case of succsess. Returns 1 if the index is out of bounds
-DSHDEF DS_RESULT ds_dynamic_array_delete(ds_dynamic_array *da,
+DSHDEF ds_result ds_dynamic_array_delete(ds_dynamic_array *da,
                                          unsigned long index) {
-    DS_RESULT result = DS_OK;
+    ds_result result = DS_OK;
 
     if (index >= da->count) {
         DS_LOG_ERROR("Index out of bounds");
@@ -1078,7 +1250,7 @@ DSHDEF void ds_string_builder_init(ds_string_builder *sb) {
 // Append a formatted string to the string builder
 //
 // Returns 0 if the string was appended successfully.
-DSHDEF DS_RESULT ds_string_builder_appendn(ds_string_builder *sb,
+DSHDEF ds_result ds_string_builder_appendn(ds_string_builder *sb,
                                            const char *str, unsigned long len) {
     return ds_dynamic_array_append_many(&sb->items, (void **)str, len);
 }
@@ -1086,9 +1258,9 @@ DSHDEF DS_RESULT ds_string_builder_appendn(ds_string_builder *sb,
 // Append a formatted string to the string builder
 //
 // Returns 0 if the string was appended successfully.
-DSHDEF DS_RESULT ds_string_builder_append(ds_string_builder *sb,
+DSHDEF ds_result ds_string_builder_append(ds_string_builder *sb,
                                           const char *format, ...) {
-    DS_RESULT result = DS_OK;
+    ds_result result = DS_OK;
 
     va_list args;
     va_start(args, format);
@@ -1120,7 +1292,7 @@ defer:
 // Append a character to the string builder
 //
 // Returns 0 if the character was appended successfully.
-DSHDEF DS_RESULT ds_string_builder_appendc(ds_string_builder *sb, char chr) {
+DSHDEF ds_result ds_string_builder_appendc(ds_string_builder *sb, char chr) {
     return ds_dynamic_array_append(&sb->items, &chr);
 }
 
@@ -1128,8 +1300,8 @@ DSHDEF DS_RESULT ds_string_builder_appendc(ds_string_builder *sb, char chr) {
 //
 // Returns 0 if the string was built successfully, 1 if the string could not be
 // allocated.
-DSHDEF DS_RESULT ds_string_builder_build(ds_string_builder *sb, char **str) {
-    DS_RESULT result = DS_OK;
+DSHDEF ds_result ds_string_builder_build(ds_string_builder *sb, char **str) {
+    ds_result result = DS_OK;
 
     *str = DS_MALLOC(sb->items.allocator, sb->items.count + 1);
     if (*str == NULL) {
@@ -1274,8 +1446,8 @@ DSHDEF void ds_string_slice_trim(ds_string_slice *ss, char chr) {
 //
 // Returns 0 if the string was converted successfully, 1 if the string could not
 // be allocated.
-DSHDEF DS_RESULT ds_string_slice_to_owned(ds_string_slice *ss, char **str) {
-    DS_RESULT result = DS_OK;
+DSHDEF ds_result ds_string_slice_to_owned(ds_string_slice *ss, char **str) {
+    ds_result result = DS_OK;
 
     *str = DS_MALLOC(ss->allocator, ss->len + 1);
     if (*str == NULL) {
@@ -1453,8 +1625,8 @@ DSHDEF void ds_priority_queue_init(ds_priority_queue *pq,
 // Insert an item into the priority queue
 //
 // Returns 0 if the item was inserted successfully.
-DSHDEF DS_RESULT ds_priority_queue_insert(ds_priority_queue *pq, void *item) {
-    DS_RESULT result = DS_OK;
+DSHDEF ds_result ds_priority_queue_insert(ds_priority_queue *pq, void *item) {
+    ds_result result = DS_OK;
     ds_dynamic_array_append(&pq->items, item);
 
     int index = pq->items.count - 1;
@@ -1496,8 +1668,8 @@ defer:
 //
 // Returns 0 if an item was pulled successfully, 1 if the priority queue is
 // empty.
-DSHDEF DS_RESULT ds_priority_queue_pull(ds_priority_queue *pq, void *item) {
-    DS_RESULT result = DS_OK;
+DSHDEF ds_result ds_priority_queue_pull(ds_priority_queue *pq, void *item) {
+    ds_result result = DS_OK;
 
     if (pq->items.count == 0) {
         DS_LOG_ERROR("Priority queue is empty");
@@ -1560,7 +1732,7 @@ defer:
 //
 // Returns 0 if an item was peeked successfully, 1 if the priority queue is
 // empty.
-DSHDEF DS_RESULT ds_priority_queue_peek(ds_priority_queue *pq, void *item) {
+DSHDEF ds_result ds_priority_queue_peek(ds_priority_queue *pq, void *item) {
     int result = DS_OK;
 
     if (pq->items.count == 0) {
@@ -1615,8 +1787,8 @@ DSHDEF void ds_linked_list_init(ds_linked_list *ll, unsigned long item_size) {
 //
 // Returns 0 if the item was pushed successfully, 1 if the list could not be
 // allocated.
-DSHDEF DS_RESULT ds_linked_list_push_back(ds_linked_list *ll, void *item) {
-    DS_RESULT result = DS_OK;
+DSHDEF ds_result ds_linked_list_push_back(ds_linked_list *ll, void *item) {
+    ds_result result = DS_OK;
 
     ds_linked_list_node *node =
         DS_MALLOC(ll->allocator, sizeof(ds_linked_list_node));
@@ -1658,8 +1830,8 @@ defer:
 //
 // Returns 0 if the item was pushed successfully, 1 if the list could not be
 // allocated.
-DSHDEF DS_RESULT ds_linked_list_push_front(ds_linked_list *ll, void *item) {
-    DS_RESULT result = DS_OK;
+DSHDEF ds_result ds_linked_list_push_front(ds_linked_list *ll, void *item) {
+    ds_result result = DS_OK;
 
     ds_linked_list_node *node =
         DS_MALLOC(ll->allocator, sizeof(ds_linked_list_node));
@@ -1701,9 +1873,9 @@ defer:
 //
 // Returns 0 if the item was popped successfully, 1 if the list is empty.
 // The item is stored in the item parameter.
-DSHDEF DS_RESULT ds_linked_list_pop_back(ds_linked_list *ll, void *item) {
+DSHDEF ds_result ds_linked_list_pop_back(ds_linked_list *ll, void *item) {
     ds_linked_list_node *node = NULL;
-    DS_RESULT result = DS_OK;
+    ds_result result = DS_OK;
 
     if (ll->tail == NULL) {
         DS_LOG_ERROR("Linked list is empty");
@@ -1736,9 +1908,9 @@ defer:
 //
 // Returns 0 if the item was popped successfully, 1 if the list is empty.
 // The item is stored in the item parameter.
-DSHDEF DS_RESULT ds_linked_list_pop_front(ds_linked_list *ll, void *item) {
+DSHDEF ds_result ds_linked_list_pop_front(ds_linked_list *ll, void *item) {
     ds_linked_list_node *node = NULL;
-    DS_RESULT result = DS_OK;
+    ds_result result = DS_OK;
 
     if (ll->head == NULL) {
         DS_LOG_ERROR("Linked list is empty");
@@ -1790,3 +1962,755 @@ DSHDEF void ds_linked_list_free(ds_linked_list *ll) {
 }
 
 #endif // DS_LL_IMPLEMENTATION
+
+#ifdef DS_HM_IMPLEMENTATION
+
+// Initialize the hashmap using an allocator
+//
+// Returns 0 if the initialization was succsess. Returns 1 if it failed to
+// allocate the hashmap
+DSHDEF ds_result ds_hashmap_init_allocator(
+    ds_hashmap *map, unsigned long capacity,
+    unsigned long (*hash)(const void *),
+    int (*compare)(const void *, const void *), DS_ALLOCATOR *allocator) {
+    ds_result result = DS_OK;
+
+    map->allocator = allocator;
+    map->capacity = capacity;
+
+    map->buckets = DS_MALLOC(map->allocator, capacity * sizeof(ds_dynamic_array));
+    if (map->buckets == NULL) {
+        DS_LOG_ERROR("Failed to allocate hashmap buckets");
+        return_defer(DS_ERR);
+    }
+
+    for (unsigned int i = 0; i < map->capacity; i++) {
+        ds_dynamic_array_init_allocator(map->buckets + i, sizeof(ds_hashmap_kv), map->allocator);
+    }
+
+    map->hash = hash;
+    map->compare = compare;
+
+defer:
+    return result;
+}
+
+// Initialize the hashmap
+//
+// Returns 0 if the initialization was succsess. Returns 1 if it failed to
+// allocate the hashmap
+DSHDEF ds_result ds_hashmap_init(ds_hashmap *map, unsigned long capacity,
+                                 unsigned long (*hash)(const void *),
+                                 int (*compare)(const void *, const void *)) {
+    return ds_hashmap_init_allocator(map, capacity, hash, compare, NULL);
+}
+
+// Insert a key value pair into the hashmap
+//
+// Returns 0 for succsess. Returns 1 if it failed to add the item
+DSHDEF ds_result ds_hashmap_insert(ds_hashmap *map, ds_hashmap_kv *kv) {
+    ds_result result = DS_OK;
+
+    unsigned int index = map->hash(kv->key) % map->capacity;
+
+    if (ds_dynamic_array_append(map->buckets + index, kv) != DS_OK) {
+        DS_LOG_ERROR("Failed to insert item into bucket");
+        return_defer(DS_ERR);
+    }
+
+defer:
+    return result;
+}
+
+// Get an item from the hashmap using the key
+//
+// Returns 0 if it found the item. Returns 1 in case of an error
+DSHDEF ds_result ds_hashmap_get(ds_hashmap *map, ds_hashmap_kv *kv) {
+    ds_result result = DS_OK;
+    boolean found = false;
+
+    unsigned int index = map->hash(kv->key) % map->capacity;
+    ds_dynamic_array *bucket = map->buckets + index;
+
+    for (int i = 0; bucket->count; i++) {
+        ds_hashmap_kv tmp = {0};
+        if (ds_dynamic_array_get(bucket, i, &tmp) != DS_OK) {
+            return_defer(DS_ERR);
+        }
+
+        if (map->compare(kv->key, tmp.key) == 0) {
+            kv->value = tmp.value;
+            found = true;
+            break;
+        }
+    }
+
+    if (!found) {
+        DS_LOG_ERROR("Failed to find item in hashmap");
+        return_defer(DS_ERR);
+    }
+
+defer:
+    return result;
+}
+
+// Delete a key from the hashmap (this does not free the memory)
+//
+// Returns 0 if it found the item. Returns 1 in case of an error
+DSHDEF ds_result ds_hashmap_delete(ds_hashmap *map, const void *key) {
+    ds_result result = DS_OK;
+    boolean found = false;
+
+    unsigned int index = map->hash(key) % map->capacity;
+    ds_dynamic_array *bucket = map->buckets + index;
+
+    for (int i = 0; bucket->count; i++) {
+        ds_hashmap_kv tmp = {0};
+        if (ds_dynamic_array_get(bucket, i, &tmp) != DS_OK) {
+            return_defer(DS_ERR);
+        }
+
+        if (map->compare(key, tmp.key) == 0) {
+            ds_dynamic_array_delete(bucket, i);
+            found = true;
+            break;
+        }
+    }
+
+    if (!found) {
+        DS_LOG_ERROR("Failed to find item in hashmap");
+        return_defer(DS_ERR);
+    }
+
+defer:
+    return result;
+}
+
+// Get the number of key value pairs in the hashmap.
+//
+// Returns the number of items.
+DSHDEF unsigned long ds_hashmap_count(ds_hashmap *map) {
+    unsigned long count = 0;
+
+    for (unsigned int i = 0; i < map->capacity; i++) {
+        count += map->buckets[i].count;
+    }
+
+    return count;
+}
+
+// Free the hashmap (this does not free the values or the keys)
+DSHDEF void ds_hashmap_free(ds_hashmap *map) {
+    for (unsigned int i = 0; i < map->capacity; i++) {
+        ds_dynamic_array_free(map->buckets + i);
+    }
+
+    if (map->buckets != NULL) {
+        DS_FREE(map->allocator, map->buckets);
+    }
+
+    map->allocator = NULL;
+    map->buckets = NULL;
+    map->capacity = 0;
+    map->hash = NULL;
+    map->compare = NULL;
+}
+
+#endif // DS_HM_IMPLEMENTATION
+
+#ifdef DS_AP_IMPLEMENTATION
+
+// Initialize the argparser with a custom allocator
+DSHDEF void ds_argparse_parser_init_allocator(ds_argparse_parser *parser,
+                                              char *name, char *description,
+                                              char *version,
+                                              DS_ALLOCATOR *allocator) {
+    parser->allocator = allocator;
+    parser->name = name;
+    parser->description = description;
+    parser->version = version;
+    ds_dynamic_array_init_allocator(&parser->arguments, sizeof(ds_argument),
+                                    allocator);
+
+    ds_argparse_add_argument(
+        parser,
+        (ds_argparse_options){.short_name = 'v',
+                              .long_name = "version",
+                              .description = "print the program version",
+                              .type = ARGUMENT_TYPE_FLAG,
+                              .required = false});
+    ds_argparse_add_argument(
+        parser, (ds_argparse_options){.short_name = 'h',
+                                      .long_name = "help",
+                                      .description = "print this help message",
+                                      .type = ARGUMENT_TYPE_FLAG,
+                                      .required = false});
+}
+
+// Initialize with the default malloc allocator
+DSHDEF void ds_argparse_parser_init(ds_argparse_parser *parser, char *name,
+                                    char *description, char *version) {
+    ds_argparse_parser_init_allocator(parser, name, description, version, NULL);
+}
+
+// Add an argument to the parser
+//
+// Adds a new argument to the parser with the given options.
+//
+// Arguments:
+// - parser: argument parser
+// - options: argument options
+DSHDEF ds_result ds_argparse_add_argument(ds_argparse_parser *parser,
+                                          ds_argparse_options options) {
+    ds_argument arg = {
+        .options = options,
+    };
+
+    switch (options.type) {
+    case ARGUMENT_TYPE_VALUE:
+        arg.value = NULL;
+        break;
+    case ARGUMENT_TYPE_FLAG:
+        arg.flag = 0;
+        break;
+    case ARGUMENT_TYPE_POSITIONAL:
+        arg.value = NULL;
+        break;
+    case ARGUMENT_TYPE_POSITIONAL_REST:
+        ds_dynamic_array_init(&arg.values, sizeof(char *));
+        break;
+    case ARGUMENT_TYPE_VALUE_ARRAY:
+        ds_dynamic_array_init(&arg.values, sizeof(char *));
+        break;
+    }
+
+    return ds_dynamic_array_append(&parser->arguments, &arg);
+}
+
+static ds_result argparse_validate_parser(ds_argparse_parser *parser) {
+    ds_result result = DS_OK;
+    boolean found_optional_positional = false;
+    boolean found_positional_rest = false;
+
+    for (unsigned int i = 0; i < parser->arguments.count; i++) {
+        ds_argument *item = NULL;
+        if (ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item) != DS_OK) {
+            DS_LOG_ERROR("Could not get item");
+            return_defer(DS_ERR);
+        }
+
+        ds_argparse_options options = item->options;
+
+        if (options.type == ARGUMENT_TYPE_POSITIONAL && found_positional_rest) {
+            DS_LOG_ERROR("positional argument after positional rest: %s",
+                         options.long_name);
+            result = DS_ERR;
+        }
+
+        if (options.type == ARGUMENT_TYPE_POSITIONAL_REST &&
+            found_positional_rest) {
+            DS_LOG_ERROR("multiple positional rest arguments");
+            result = DS_ERR;
+        }
+
+        if (options.type == ARGUMENT_TYPE_POSITIONAL_REST && !found_positional_rest) {
+            found_positional_rest = true;
+        }
+
+        if (options.type == ARGUMENT_TYPE_POSITIONAL && !options.required) {
+            found_optional_positional = true;
+        }
+
+        if (options.short_name == '\0' && options.long_name == NULL) {
+            DS_LOG_ERROR("no short_name and long_name for argument %du", i);
+            result = DS_ERR;
+        }
+        if (options.type == ARGUMENT_TYPE_FLAG && options.required) {
+            DS_LOG_ERROR("flag argument cannot be required: %s",
+                         options.long_name);
+            result = DS_ERR;
+        }
+        if (options.type == ARGUMENT_TYPE_POSITIONAL && options.required && found_optional_positional) {
+            DS_LOG_ERROR("required positional argument after optional: %s",
+                         options.long_name);
+            result = DS_ERR;
+        }
+    }
+
+defer:
+    return result;
+}
+
+static ds_result argparse_post_validate_parser(ds_argparse_parser *parser) {
+    ds_result result = DS_OK;
+
+    for (unsigned int i = 0; i < parser->arguments.count; i++) {
+        ds_argument *item = NULL;
+        if (ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item) != DS_OK) {
+            DS_LOG_ERROR("Could not get item");
+            return_defer(DS_ERR);
+        }
+
+        ds_argparse_options options = item->options;
+
+        if (options.type == ARGUMENT_TYPE_POSITIONAL && options.required) {
+            if (item->value == NULL) {
+                DS_LOG_ERROR("missing required positional argument: %s",
+                             options.long_name);
+                result = DS_ERR;
+            }
+        }
+
+        if (options.type == ARGUMENT_TYPE_VALUE && options.required) {
+            if (item->value == NULL) {
+                DS_LOG_ERROR("missing required argument: --%s",
+                             options.long_name);
+                result = DS_ERR;
+            }
+        }
+
+        if (options.type == ARGUMENT_TYPE_VALUE_ARRAY && options.required) {
+            if (item->values.count == 0) {
+                DS_LOG_ERROR("missing required argument: --%s",
+                             options.long_name);
+                result = DS_ERR;
+            }
+        }
+
+        if (options.type == ARGUMENT_TYPE_POSITIONAL_REST && options.required) {
+            if (item->values.count == 0) {
+                DS_LOG_ERROR("missing required positional rest argument: %s",
+                             options.long_name);
+                result = DS_ERR;
+            }
+        }
+    }
+
+defer:
+    return result;
+}
+
+static ds_argument *argparse_get_option_arg(ds_argparse_parser *parser,
+                                            const char *name) {
+    if (name[0] != '-') {
+        DS_LOG_WARN("provided name is not an option: %s", name);
+        return NULL;
+    }
+
+    ds_argument *arg = NULL;
+
+    for (unsigned int j = 0; j < parser->arguments.count; j++) {
+        ds_argument *item = NULL;
+        if (ds_dynamic_array_get_ref(&parser->arguments, j, (void **)&item) != DS_OK) {
+            DS_LOG_ERROR("Could not get item");
+            break;
+        }
+
+        if ((name[1] == '-' && item->options.long_name != NULL &&
+             DS_STRCMP(name + 2, item->options.long_name) == 0) ||
+            (name[1] != '-' && item->options.short_name != '\0' &&
+             name[1] == item->options.short_name)) {
+            arg = item;
+            break;
+        }
+    }
+
+    if (arg == NULL) {
+        DS_LOG_ERROR("invalid argument: %s", name);
+        return NULL;
+    }
+
+    return arg;
+}
+
+static ds_argument *argparse_get_positional_arg(ds_argparse_parser *parser,
+                                                const char *name) {
+    if (name[0] == '-') {
+        DS_LOG_WARN("provided name is not a positional argument: %s", name);
+        return NULL;
+    }
+
+    ds_argument *arg = NULL;
+    for (unsigned int j = 0; j < parser->arguments.count; j++) {
+        ds_argument *item = NULL;
+        if (ds_dynamic_array_get_ref(&parser->arguments, j, (void **)&item) != DS_OK) {
+            DS_LOG_ERROR("Could not get item");
+            break;
+        }
+
+        if (item->options.type == ARGUMENT_TYPE_POSITIONAL &&
+            item->value == NULL) {
+            arg = item;
+            break;
+        }
+
+        if (item->options.type == ARGUMENT_TYPE_POSITIONAL_REST) {
+            arg = item;
+            break;
+        }
+    }
+
+    return arg;
+}
+
+// Parse the command line arguments
+//
+// Parses the command line arguments and sets the values of the arguments in the
+// parser.
+//
+// Arguments:
+// - parser: argument parser
+// - argc: number of command line arguments
+// - argv: command line arguments
+//
+// Returns 0 if the parsing was successful, 1 otherwise.
+DSHDEF ds_result ds_argparse_parse(ds_argparse_parser *parser, int argc, char *argv[]) {
+    ds_result result = DS_OK;
+
+    if (argparse_validate_parser(parser) != DS_OK) {
+        return_defer(DS_ERR);
+    }
+
+    for (int i = 1; i < argc; i++) {
+        char *name = argv[i];
+
+        if (DS_STRCMP(name, "-h") == 0 || DS_STRCMP(name, "--help") == 0) {
+            ds_argparse_print_help(parser);
+            DS_EXIT(0);
+        }
+
+        if (DS_STRCMP(name, "-v") == 0 || DS_STRCMP(name, "--version") == 0) {
+            ds_argparse_print_version(parser);
+            DS_EXIT(0);
+        }
+
+        if (name[0] == '-') {
+            ds_argument *arg = argparse_get_option_arg(parser, name);
+
+            if (arg == NULL) {
+                return_defer(DS_ERR);
+            }
+
+            switch (arg->options.type) {
+            case ARGUMENT_TYPE_FLAG: {
+                arg->flag = 1;
+                break;
+            }
+            case ARGUMENT_TYPE_VALUE: {
+                if (i + 1 >= argc) {
+                    DS_LOG_ERROR("missing value for argument: %s", name);
+                    ds_argparse_print_help(parser);
+                    return_defer(DS_ERR);
+                }
+
+                arg->value = argv[++i];
+                break;
+            }
+            case ARGUMENT_TYPE_VALUE_ARRAY: {
+                if (i + 1 >= argc) {
+                    DS_LOG_ERROR("missing value for argument: %s", name);
+                    ds_argparse_print_help(parser);
+                    return_defer(DS_ERR);
+                }
+
+                if (ds_dynamic_array_append(&arg->values, &argv[++i]) != DS_OK) {
+                    DS_LOG_ERROR("failed to append value to argument: %s",
+                                 name);
+                    return_defer(DS_ERR);
+                }
+                break;
+            }
+            default: {
+                DS_LOG_ERROR("type not supported for argument: %s", name);
+                ds_argparse_print_help(parser);
+                return_defer(DS_ERR);
+            }
+            }
+        } else {
+            ds_argument *arg = argparse_get_positional_arg(parser, name);
+
+            if (arg == NULL) {
+                DS_LOG_ERROR("unexpected positional argument: %s", name);
+                ds_argparse_print_help(parser);
+                return_defer(DS_ERR);
+            }
+
+            switch (arg->options.type) {
+            case ARGUMENT_TYPE_POSITIONAL: {
+                arg->value = name;
+                break;
+            }
+            case ARGUMENT_TYPE_POSITIONAL_REST: {
+                if (ds_dynamic_array_append(&arg->values, &name) != DS_OK) {
+                    DS_LOG_ERROR("failed to append value to positional rest");
+                    return_defer(DS_ERR);
+                }
+                break;
+            }
+            default: {
+                DS_LOG_ERROR("type not supported for argument: %s", name);
+                ds_argparse_print_help(parser);
+                return_defer(DS_ERR);
+            }
+            }
+
+            arg->value = name;
+        }
+    }
+
+    if (argparse_post_validate_parser(parser) != DS_OK) {
+        ds_argparse_print_help(parser);
+        return_defer(DS_ERR);
+    }
+
+defer:
+    return result;
+}
+
+// Get the value of an argument
+//
+// Returns the value of the argument with the given long name.
+//
+// Arguments:
+// - parser: argument parser
+// - long_name: long name of the argument
+//
+// Returns:
+// - value of the argument
+DSHDEF char *ds_argparse_get_value(ds_argparse_parser *parser, char *long_name) {
+    for (unsigned int i = 0; i < parser->arguments.count; i++) {
+        ds_argument *item = NULL;
+        if (ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item) != DS_OK) {
+            DS_LOG_ERROR("Could not get item");
+            break;
+        }
+
+        if (item->options.long_name != NULL &&
+            DS_STRCMP(long_name, item->options.long_name) == 0) {
+            if (item->options.type != ARGUMENT_TYPE_VALUE &&
+                item->options.type != ARGUMENT_TYPE_POSITIONAL) {
+                DS_LOG_WARN("argument is not a value: %s", long_name);
+            }
+            return item->value;
+        }
+    }
+
+    return NULL;
+}
+
+// Get the value of a positional argument
+//
+// Returns the value of the positional argument with the given long name.
+//
+// Arguments:
+// - parser: argument parser
+// - long_name: long name of the argument
+//
+// Returns:
+// - value of the flag argument
+DSHDEF unsigned int ds_argparse_get_flag(ds_argparse_parser *parser, char *long_name) {
+    for (unsigned int i = 0; i < parser->arguments.count; i++) {
+        ds_argument *item = NULL;
+        if (ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item) != DS_OK) {
+            DS_LOG_ERROR("Could not get item");
+            break;
+        }
+
+        if (item->options.long_name != NULL &&
+            DS_STRCMP(long_name, item->options.long_name) == 0) {
+            if (item->options.type != ARGUMENT_TYPE_FLAG) {
+                DS_LOG_WARN("argument is not a flag: %s", long_name);
+            }
+            return item->flag;
+        }
+    }
+
+    return 0;
+}
+
+DSHDEF ds_result ds_argparse_get_values(ds_argparse_parser *parser, char *name,
+                                        ds_dynamic_array *values) {
+    ds_result result = DS_OK;
+
+    for (unsigned int i = 0; i < parser->arguments.count; i++) {
+        ds_argument *item = NULL;
+        if (ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item) != DS_OK) {
+            DS_LOG_ERROR("Could not get item");
+            return_defer(DS_ERR);
+        }
+
+        if (item->options.long_name != NULL &&
+            DS_STRCMP(name, item->options.long_name) == 0) {
+            if (item->options.type != ARGUMENT_TYPE_POSITIONAL_REST &&
+                item->options.type != ARGUMENT_TYPE_VALUE_ARRAY) {
+                DS_LOG_WARN("argument is not a array: %s", name);
+            }
+            *values = item->values;
+            return_defer(DS_OK);
+        }
+    }
+
+defer:
+    return result;
+}
+
+// Show the help message
+//
+// Prints the help message for the argument parser.
+//
+// Arguments:
+// - parser: argument parser
+DSHDEF void ds_argparse_print_help(ds_argparse_parser *parser) {
+    fprintf(stdout, "usage: %s [options]", parser->name);
+
+    for (unsigned int i = 0; i < parser->arguments.count; i++) {
+        ds_argument *item = NULL;
+        if (ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item) != DS_OK) {
+            DS_LOG_ERROR("Could not get item");
+            break;
+        }
+
+        ds_argparse_options options = item->options;
+
+        if (options.type == ARGUMENT_TYPE_VALUE && options.required) {
+            fprintf(stdout, " -%c <%s>", options.short_name, options.long_name);
+        }
+    }
+
+    for (unsigned int i = 0; i < parser->arguments.count; i++) {
+        ds_argument *item = NULL;
+        if (ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item) != 0) {
+            DS_LOG_ERROR("Could not get item");
+            break;
+        }
+
+        ds_argparse_options options = item->options;
+
+        if (options.type == ARGUMENT_TYPE_POSITIONAL) {
+            if (options.required) {
+                fprintf(stdout, " <%s>", options.long_name);
+            } else {
+                fprintf(stdout, " [%s]", options.long_name);
+            }
+        }
+    }
+
+    for (unsigned int i = 0; i < parser->arguments.count; i++) {
+        ds_argument *item = NULL;
+        if (ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item) != DS_OK) {
+            DS_LOG_ERROR("Could not get item");
+            break;
+        }
+
+        ds_argparse_options options = item->options;
+
+        if (options.type == ARGUMENT_TYPE_VALUE_ARRAY) {
+            if (options.required) {
+                fprintf(stdout, " -%c <%s>...", options.short_name,
+                        options.long_name);
+            } else {
+                fprintf(stdout, " -%c [%s]...", options.short_name,
+                        options.long_name);
+            }
+        }
+    }
+
+    for (unsigned int i = 0; i < parser->arguments.count; i++) {
+        ds_argument *item = NULL;
+        if (ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item) != DS_OK) {
+            DS_LOG_ERROR("Could not get item");
+            break;
+        }
+
+        ds_argparse_options options = item->options;
+
+        if (options.type == ARGUMENT_TYPE_POSITIONAL_REST) {
+            if (options.required) {
+                fprintf(stdout, " <%s>...", options.long_name);
+            } else {
+                fprintf(stdout, " [%s]...", options.long_name);
+            }
+        }
+    }
+
+    fprintf(stdout, "\n");
+    fprintf(stdout, "%s\n", parser->description);
+    fprintf(stdout, "\n");
+    fprintf(stdout, "options:\n");
+
+    for (unsigned int i = 0; i < parser->arguments.count; i++) {
+        ds_argument *item = NULL;
+        if (ds_dynamic_array_get_ref(&parser->arguments, i, (void **)&item) != DS_OK) {
+            DS_LOG_ERROR("Could not get item");
+            break;
+        }
+
+        switch (item->options.type) {
+        case ARGUMENT_TYPE_POSITIONAL: {
+            fprintf(stdout, "  %c, %s\n", item->options.short_name,
+                    item->options.long_name);
+            fprintf(stdout, "      %s\n", item->options.description);
+            fprintf(stdout, "\n");
+            break;
+        }
+        case ARGUMENT_TYPE_POSITIONAL_REST: {
+            fprintf(stdout, "  %c, %s\n", item->options.short_name,
+                    item->options.long_name);
+            fprintf(stdout, "      %s\n", item->options.description);
+            fprintf(stdout, "\n");
+            break;
+        }
+        case ARGUMENT_TYPE_FLAG: {
+            fprintf(stdout, "  -%c, --%s\n", item->options.short_name,
+                    item->options.long_name);
+            fprintf(stdout, "      %s\n", item->options.description);
+            fprintf(stdout, "\n");
+            break;
+        }
+        case ARGUMENT_TYPE_VALUE: {
+            fprintf(stdout, "  -%c, --%s <value>\n", item->options.short_name,
+                    item->options.long_name);
+            fprintf(stdout, "      %s\n", item->options.description);
+            fprintf(stdout, "\n");
+            break;
+        }
+        case ARGUMENT_TYPE_VALUE_ARRAY: {
+            fprintf(stdout, "  -%c, --%s <value>...\n",
+                    item->options.short_name, item->options.long_name);
+            fprintf(stdout, "      %s\n", item->options.description);
+            fprintf(stdout, "\n");
+            break;
+        }
+        default: {
+            DS_PANIC("invalid argument type");
+        }
+        }
+    }
+}
+
+// Show the version
+//
+// Prints the version of the program.
+//
+// Arguments:
+// - parser: argument parser
+DSHDEF void ds_argparse_print_version(ds_argparse_parser *parser) {
+    fprintf(stdout, "%s %s\n", parser->name, parser->version);
+}
+
+// Free the argument parser
+//
+// Frees the memory allocated for the argument parser.
+//
+// Arguments:
+// - parser: argument parser
+DSHDEF void ds_argparse_parser_free(ds_argparse_parser *parser) {
+    ds_dynamic_array_free(&parser->arguments);
+
+    parser->allocator = NULL;
+    parser->name = NULL;
+    parser->description = NULL;
+    parser->version = NULL;
+}
+
+#endif
