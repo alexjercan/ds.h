@@ -14,6 +14,8 @@
 // Options:
 // - DS_ARENA_ALLOCATOR_IMPLEMENTATION: Use the arena allocator
 // - DS_LIST_ALLOCATOR_IMPLEMENTATION: Use the list allocator
+// - DS_PQ_IMPLEMENTATION: Use the priority queue implementation
+// - DS_LL_IMPLEMENTATION: Use the linked list implementation
 //
 // ## DATA STRUCTURES
 //
@@ -556,7 +558,64 @@ DSHDEF long ds_io_read(const char *filename, char **buffer, const char *mode);
 DSHDEF long ds_io_write(const char *filename, char *buffer,
                         unsigned long buffer_len, const char *mode);
 
+
+// PRIORITY QUEUE
+//
+// The priority queue is implemented as a heap, where you can define the
+// comparison function to use when inserting items. The comparison function
+// should return a positive value if the first item has higher priority than
+// the second item, a negative value if the second item has higher priority than
+// the first item, and 0 if the items have the same priority.
+typedef struct ds_priority_queue {
+        ds_dynamic_array items;
+        int (*compare)(const void *, const void *);
+} ds_priority_queue;
+
+DSHDEF void ds_priority_queue_init_allocator(
+    ds_priority_queue *pq, int (*compare)(const void *, const void *),
+    unsigned long item_size, DS_ALLOCATOR *allocator);
+DSHDEF void ds_priority_queue_init(ds_priority_queue *pq,
+                                   int (*compare)(const void *, const void *),
+                                   unsigned long item_size);
+DSHDEF DS_RESULT ds_priority_queue_insert(ds_priority_queue *pq, void *item);
+DSHDEF DS_RESULT ds_priority_queue_pull(ds_priority_queue *pq, void *item);
+DSHDEF DS_RESULT ds_priority_queue_peek(ds_priority_queue *pq, void *item);
+DSHDEF boolean ds_priority_queue_empty(ds_priority_queue *pq);
+DSHDEF void ds_priority_queue_free(ds_priority_queue *pq);
+
+// (DOUBLY) LINKED LIST
+//
+// The linked list is a simple list that can be used to push and pop items from
+// the front and back of the list.
+typedef struct ds_linked_list_node {
+        void *item;
+        struct ds_linked_list_node *prev;
+        struct ds_linked_list_node *next;
+} ds_linked_list_node;
+
+typedef struct ds_linked_list {
+        DS_ALLOCATOR *allocator;
+        unsigned long item_size;
+        ds_linked_list_node *head;
+        ds_linked_list_node *tail;
+} ds_linked_list;
+
+DSHDEF void ds_linked_list_init_allocator(ds_linked_list *ll,
+                                          unsigned long item_size,
+                                          DS_ALLOCATOR *allocator);
+DSHDEF void ds_linked_list_init(ds_linked_list *ll, unsigned long item_size);
+DSHDEF DS_RESULT ds_linked_list_push_back(ds_linked_list *ll, void *item);
+DSHDEF DS_RESULT ds_linked_list_push_front(ds_linked_list *ll, void *item);
+DSHDEF DS_RESULT ds_linked_list_pop_back(ds_linked_list *ll, void *item);
+DSHDEF DS_RESULT ds_linked_list_pop_front(ds_linked_list *ll, void *item);
+DSHDEF boolean ds_linked_list_empty(ds_linked_list *ll);
+DSHDEF void ds_linked_list_free(ds_linked_list *ll);
+
 #endif // DS_H
+
+#ifdef DS_PQ_IMPLEMENTATION
+#define DS_DA_IMPLEMENTATION
+#endif // DS_PQ_IMPLEMENTATION
 
 #ifdef DS_IO_IMPLEMENTATION
 #define DS_SB_IMPLEMENTATION
@@ -1372,3 +1431,362 @@ defer:
 }
 
 #endif // DS_IO_IMPLEMENTATION
+
+#ifdef DS_PQ_IMPLEMENTATION
+
+// Initialize the priority queue with a custom allocator
+DSHDEF void ds_priority_queue_init_allocator(
+    ds_priority_queue *pq, int (*compare)(const void *, const void *),
+    unsigned long item_size, DS_ALLOCATOR *allocator) {
+    ds_dynamic_array_init_allocator(&pq->items, item_size, allocator);
+
+    pq->compare = compare;
+}
+
+// Initialize the priority queue
+DSHDEF void ds_priority_queue_init(ds_priority_queue *pq,
+                                   int (*compare)(const void *, const void *),
+                                   unsigned long item_size) {
+    ds_priority_queue_init_allocator(pq, compare, item_size, NULL);
+}
+
+// Insert an item into the priority queue
+//
+// Returns 0 if the item was inserted successfully.
+DSHDEF DS_RESULT ds_priority_queue_insert(ds_priority_queue *pq, void *item) {
+    DS_RESULT result = DS_OK;
+    ds_dynamic_array_append(&pq->items, item);
+
+    int index = pq->items.count - 1;
+    int parent = (index - 1) / 2;
+
+    void *index_item = NULL;
+    if (ds_dynamic_array_get_ref(&pq->items, index, &index_item) != DS_OK) {
+        DS_LOG_ERROR("Could not get item");
+        return_defer(DS_ERR);
+    }
+
+    void *parent_item = NULL;
+    if (ds_dynamic_array_get_ref(&pq->items, parent, &parent_item) != DS_OK) {
+        DS_LOG_ERROR("Could not get item");
+        return_defer(DS_ERR);
+    }
+
+    while (index != 0 && pq->compare(index_item, parent_item) > 0) {
+        ds_dynamic_array_swap(&pq->items, index, parent);
+
+        index = parent;
+        parent = (index - 1) / 2;
+
+        if (ds_dynamic_array_get_ref(&pq->items, index, &index_item) != DS_OK) {
+            DS_LOG_ERROR("Could not get item");
+            return_defer(DS_ERR);
+        }
+        if (ds_dynamic_array_get_ref(&pq->items, parent, &parent_item) != DS_OK) {
+            DS_LOG_ERROR("Could not get item");
+            return_defer(DS_ERR);
+        }
+    }
+
+defer:
+    return result;
+}
+
+// Pull the item with the highest priority from the priority queue
+//
+// Returns 0 if an item was pulled successfully, 1 if the priority queue is
+// empty.
+DSHDEF DS_RESULT ds_priority_queue_pull(ds_priority_queue *pq, void *item) {
+    DS_RESULT result = DS_OK;
+
+    if (pq->items.count == 0) {
+        DS_LOG_ERROR("Priority queue is empty");
+        return_defer(DS_ERR);
+    }
+
+    if (ds_dynamic_array_get(&pq->items, 0, item) != DS_OK) {
+        return_defer(DS_ERR);
+    }
+    ds_dynamic_array_swap(&pq->items, 0, pq->items.count - 1);
+
+    unsigned int index = 0;
+    unsigned int swap = index;
+    void *swap_item = NULL;
+    do {
+        index = swap;
+
+        unsigned int left = 2 * index + 1;
+        if (left < pq->items.count - 1) {
+            void *left_item = NULL;
+            if (ds_dynamic_array_get_ref(&pq->items, swap, &swap_item) != DS_OK) {
+                DS_LOG_ERROR("Could not get item");
+                return_defer(DS_ERR);
+            }
+            if (ds_dynamic_array_get_ref(&pq->items, left, &left_item) != DS_OK) {
+                DS_LOG_ERROR("Could not get item");
+                return_defer(DS_ERR);
+            }
+            if (pq->compare(left_item, swap_item) > 0) {
+                swap = left;
+            }
+        }
+
+        unsigned int right = 2 * index + 2;
+        if (right < pq->items.count - 1) {
+            void *right_item = NULL;
+            if (ds_dynamic_array_get_ref(&pq->items, swap, &swap_item) != DS_OK) {
+                DS_LOG_ERROR("Could not get item");
+                return_defer(DS_ERR);
+            }
+            if (ds_dynamic_array_get_ref(&pq->items, right, &right_item) != DS_OK) {
+                DS_LOG_ERROR("Could not get item");
+                return_defer(DS_ERR);
+            }
+            if (pq->compare(right_item, swap_item) > 0) {
+                swap = right;
+            }
+        }
+
+        ds_dynamic_array_swap(&pq->items, index, swap);
+    } while (swap != index);
+
+    pq->items.count--;
+
+defer:
+    return result;
+}
+
+// Peek at the item with the highest priority in the priority queue
+//
+// Returns 0 if an item was peeked successfully, 1 if the priority queue is
+// empty.
+DSHDEF DS_RESULT ds_priority_queue_peek(ds_priority_queue *pq, void *item) {
+    int result = DS_OK;
+
+    if (pq->items.count == 0) {
+        DS_LOG_ERROR("Priority queue is empty");
+        return_defer(DS_ERR);
+    }
+
+    if (ds_dynamic_array_get(&pq->items, 0, item) != DS_OK) {
+        return_defer(DS_ERR);
+    }
+
+defer:
+    return result;
+}
+
+// Check if the priority queue is empty
+DSHDEF boolean ds_priority_queue_empty(ds_priority_queue *pq) {
+    return pq->items.count == 0;
+}
+
+// Free the priority queue
+DSHDEF void ds_priority_queue_free(ds_priority_queue *pq) {
+    ds_dynamic_array_free(&pq->items);
+
+    pq->compare = NULL;
+}
+
+#endif // DS_PQ_IMPLEMENTATION
+
+#ifdef DS_LL_IMPLEMENTATION
+
+// Initialize the linked list with a custom allocator
+//
+// The item_size parameter is the size of each item in the list.
+DSHDEF void ds_linked_list_init_allocator(ds_linked_list *ll,
+                                          unsigned long item_size,
+                                          DS_ALLOCATOR *allocator) {
+    ll->allocator = allocator;
+    ll->item_size = item_size;
+    ll->head = NULL;
+    ll->tail = NULL;
+}
+
+// Initialize the linked list
+//
+// The item_size parameter is the size of each item in the list.
+DSHDEF void ds_linked_list_init(ds_linked_list *ll, unsigned long item_size) {
+    ds_linked_list_init_allocator(ll, item_size, NULL);
+}
+
+// Push an item to the back of the linked list
+//
+// Returns 0 if the item was pushed successfully, 1 if the list could not be
+// allocated.
+DSHDEF DS_RESULT ds_linked_list_push_back(ds_linked_list *ll, void *item) {
+    DS_RESULT result = DS_OK;
+
+    ds_linked_list_node *node =
+        DS_MALLOC(ll->allocator, sizeof(ds_linked_list_node));
+    if (node == NULL) {
+        DS_LOG_ERROR("Failed to allocate linked list node");
+        return_defer(DS_ERR);
+    }
+
+    node->item = DS_MALLOC(ll->allocator, ll->item_size);
+    if (node->item == NULL) {
+        DS_LOG_ERROR("Failed to allocate linked list item");
+        return_defer(DS_ERR);
+    }
+
+    DS_MEMCPY(node->item, item, ll->item_size);
+    node->prev = ll->tail;
+    node->next = NULL;
+
+    if (ll->tail != NULL) {
+        ll->tail->next = node;
+    }
+    ll->tail = node;
+
+    if (ll->head == NULL) {
+        ll->head = node;
+    }
+
+defer:
+    if (result != DS_OK && node != NULL) {
+        if (node->item != NULL) {
+            DS_FREE(ll->allocator, node->item);
+        }
+        DS_FREE(ll->allocator, node);
+    }
+    return result;
+}
+
+// Push an item to the front of the linked list
+//
+// Returns 0 if the item was pushed successfully, 1 if the list could not be
+// allocated.
+DSHDEF DS_RESULT ds_linked_list_push_front(ds_linked_list *ll, void *item) {
+    DS_RESULT result = DS_OK;
+
+    ds_linked_list_node *node =
+        DS_MALLOC(ll->allocator, sizeof(ds_linked_list_node));
+    if (node == NULL) {
+        DS_LOG_ERROR("Failed to allocate linked list node");
+        return_defer(DS_ERR);
+    }
+
+    node->item = DS_MALLOC(ll->allocator, ll->item_size);
+    if (node->item == NULL) {
+        DS_LOG_ERROR("Failed to allocate linked list item");
+        return_defer(DS_ERR);
+    }
+
+    DS_MEMCPY(node->item, item, ll->item_size);
+    node->prev = NULL;
+    node->next = ll->head;
+
+    if (ll->head != NULL) {
+        ll->head->prev = node;
+    }
+    ll->head = node;
+
+    if (ll->tail == NULL) {
+        ll->tail = node;
+    }
+
+defer:
+    if (result != DS_OK && node != NULL) {
+        if (node->item != NULL) {
+            DS_FREE(ll->allocator, node->item);
+        }
+        DS_FREE(ll->allocator, node);
+    }
+    return result;
+}
+
+// Pop an item from the back of the linked list
+//
+// Returns 0 if the item was popped successfully, 1 if the list is empty.
+// The item is stored in the item parameter.
+DSHDEF DS_RESULT ds_linked_list_pop_back(ds_linked_list *ll, void *item) {
+    ds_linked_list_node *node = NULL;
+    DS_RESULT result = DS_OK;
+
+    if (ll->tail == NULL) {
+        DS_LOG_ERROR("Linked list is empty");
+        return_defer(DS_ERR);
+    }
+
+    node = ll->tail;
+    DS_MEMCPY(item, node->item, ll->item_size);
+
+    ll->tail = node->prev;
+    if (ll->tail != NULL) {
+        ll->tail->next = NULL;
+    }
+
+    if (node == ll->head) {
+        ll->head = NULL;
+    }
+
+defer:
+    if (node != NULL) {
+        if (node->item != NULL) {
+            DS_FREE(ll->allocator, node->item);
+        }
+        DS_FREE(ll->allocator, node);
+    }
+    return result;
+}
+
+// Pop an item from the front of the linked list
+//
+// Returns 0 if the item was popped successfully, 1 if the list is empty.
+// The item is stored in the item parameter.
+DSHDEF DS_RESULT ds_linked_list_pop_front(ds_linked_list *ll, void *item) {
+    ds_linked_list_node *node = NULL;
+    DS_RESULT result = DS_OK;
+
+    if (ll->head == NULL) {
+        DS_LOG_ERROR("Linked list is empty");
+        return_defer(DS_ERR);
+    }
+
+    node = ll->head;
+    DS_MEMCPY(item, node->item, ll->item_size);
+
+    ll->head = node->next;
+    if (ll->head != NULL) {
+        ll->head->prev = NULL;
+    }
+
+    if (node == ll->tail) {
+        ll->tail = NULL;
+    }
+
+defer:
+    if (node != NULL) {
+        if (node->item != NULL) {
+            DS_FREE(ll->allocator, node->item);
+        }
+        DS_FREE(ll->allocator, node);
+    }
+    return result;
+}
+
+// Check if the linked list is empty
+//
+// Returns 1 if the list is empty, 0 if the list is not empty.
+DSHDEF boolean ds_linked_list_empty(ds_linked_list *ll) { return ll->head == NULL; }
+
+DSHDEF void ds_linked_list_free(ds_linked_list *ll) {
+    ds_linked_list_node *node = ll->head;
+    while (node != NULL) {
+        ds_linked_list_node *next = node->next;
+        if (node->item != NULL) {
+            DS_FREE(ll->allocator, node->item);
+        }
+        DS_FREE(ll->allocator, node);
+        node = next;
+    }
+
+    ll->allocator = NULL;
+    ll->item_size = 0;
+    ll->head = NULL;
+    ll->tail = NULL;
+}
+
+#endif // DS_LL_IMPLEMENTATION
