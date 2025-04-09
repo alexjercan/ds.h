@@ -45,6 +45,14 @@
 // The default logging level is DS_LOG_LEVEL_DEBUG
 // - DS_NO_TERMINAL_COLORS: Disables the use of terminal colors in the log
 // messages
+//
+// ## Tools and Utilities
+//
+// The tools and utilities are used to provide some helper functions and
+// macros for things I do often in my C projects.
+//
+// Options:
+// - DS_IO_IMPLEMENTATION: Define this macro for some io utils
 
 #ifndef DS_H
 #define DS_H
@@ -537,7 +545,22 @@ DSHDEF DS_RESULT ds_string_builder_build(ds_string_builder *sb, char **str);
 DSHDEF void ds_string_builder_to_slice(ds_string_builder *sb, ds_string_slice *ss);
 DSHDEF void ds_string_builder_free(ds_string_builder *sb);
 
+// IO
+//
+// The io utils are a simple set of utilities to read and write files.
+#ifndef LINE_MAX
+#define LINE_MAX 4096
+#endif
+
+DSHDEF long ds_io_read(const char *filename, char **buffer, const char *mode);
+DSHDEF long ds_io_write(const char *filename, char *buffer,
+                        unsigned long buffer_len, const char *mode);
+
 #endif // DS_H
+
+#ifdef DS_IO_IMPLEMENTATION
+#define DS_SB_IMPLEMENTATION
+#endif // DS_IO_IMPLEMENTATION
 
 #ifdef DS_SB_IMPLEMENTATION
 #define DS_DA_IMPLEMENTATION
@@ -1250,3 +1273,102 @@ DSHDEF void ds_string_slice_free(ds_string_slice *ss) {
 }
 
 #endif // DS_SB_IMPLEMENTATION
+
+#ifdef DS_IO_IMPLEMENTATION
+
+// Read a file
+//
+// Reads the contents of a binary file into a buffer.
+//
+// Arguments:
+// - filename: name of the file to read
+// - buffer: pointer to the buffer to store the contents of the file
+// - mode: the mode to read in
+//
+// Returns:
+// - the number of bytes read
+DSHDEF long ds_io_read(const char *filename, char **buffer, const char *mode) {
+    long result = 0;
+
+    unsigned long line_size;
+    FILE *file = NULL;
+    ds_string_builder sb;
+    ds_string_builder_init(&sb);
+
+    if (filename != NULL) {
+        file = fopen(filename, mode);
+        if (file == NULL) {
+            DS_LOG_ERROR("Failed to open file: %s", filename);
+            return_defer(-1);
+        }
+    } else {
+        file = stdin;
+    }
+
+    char line[LINE_MAX] = {0};
+    do {
+        line_size = fread(line, sizeof(char), LINE_MAX, file);
+
+        if (ds_string_builder_appendn(&sb, line, line_size) != 0) {
+            DS_LOG_ERROR("Failed to append line to string builder");
+            return_defer(-1);
+        }
+
+        memset(line, 0, sizeof(line));
+    } while (line_size > 0);
+
+    if (ds_string_builder_build(&sb, buffer) != 0) {
+        DS_LOG_ERROR("Failed to build string from string builder");
+        return_defer(-1);
+    }
+
+    result = sb.items.count;
+
+defer:
+    if (filename != NULL && file != NULL)
+        fclose(file);
+    ds_string_builder_free(&sb);
+
+    return result;
+}
+
+// Write a file
+//
+// Writes the contents of a buffer into a binary file.
+//
+// Arguments:
+// - filename: name of the file to read
+// - buffer: pointer to the buffer to use on write
+// - buffer_len: the size of the buffer
+// - mode: the mode to write in
+//
+// Returns:
+// - the number of bytes written
+DSHDEF long ds_io_write(const char *filename, char *buffer,
+                        unsigned long buffer_len, const char *mode) {
+    long result = 0;
+
+    unsigned long buffer_size;
+    FILE *file = NULL;
+
+    if (filename != NULL) {
+        file = fopen(filename, mode);
+        if (file == NULL) {
+            DS_LOG_ERROR("Failed to open file: %s", filename);
+            return_defer(-1);
+        }
+    } else {
+        file = stdout;
+    }
+
+    buffer_size = fwrite(buffer, sizeof(char), buffer_len, file);
+    result = buffer_size;
+
+defer:
+    if (filename != NULL && file != NULL)
+        fclose(file);
+
+    return result;
+}
+
+#endif // DS_IO_IMPLEMENTATION
