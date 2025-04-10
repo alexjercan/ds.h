@@ -14,8 +14,6 @@
 // Options:
 // - DS_ARENA_ALLOCATOR_IMPLEMENTATION: Use the arena allocator
 // - DS_LIST_ALLOCATOR_IMPLEMENTATION: Use the list allocator
-// - DS_PQ_IMPLEMENTATION: Use the priority queue implementation
-// - DS_LL_IMPLEMENTATION: Use the linked list implementation
 //
 // ## DATA STRUCTURES
 //
@@ -28,6 +26,8 @@
 // implementation of the dynamic array data structure
 // - DS_SB_IMPLEMENTATION: Define this macro in one source file to include the
 // implementation of the string builder and string slice utilities
+// - DS_PQ_IMPLEMENTATION: Use the priority queue implementation
+// - DS_LL_IMPLEMENTATION: Use the linked list implementation
 //
 // ## LOGGING
 //
