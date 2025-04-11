@@ -4,13 +4,12 @@
 #include "../ds.h"
 
 struct simple_node {
-        int priority;
-        const char *value;
+    int priority;
+    const char *value;
 };
 
 int simple_node_compare_max(const void *a, const void *b) {
-    return ((struct simple_node *)a)->priority -
-           ((struct simple_node *)b)->priority;
+    return ((struct simple_node *)a)->priority - ((struct simple_node *)b)->priority;
 }
 
 int main() {

@@ -1,5 +1,5 @@
-CC = gcc
-CFLAGS = -Wall -Wextra -std=c99 -g
+CC = clang
+CFLAGS = -Wall -Wextra -g
 BUILD_DIR = build
 SRC_DIR = examples
 LIB_HEADER = ds.h

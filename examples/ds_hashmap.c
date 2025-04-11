@@ -5,8 +5,8 @@
 
 #define MAX_CAPACITY 100
 
-unsigned int my_hash(const void *key) {
-    unsigned int hash = 0;
+unsigned long my_hash(const void *key) {
+    unsigned long hash = 0;
     char *name = (char *)key;
     for (unsigned int i = 0; i < strlen(name); i++) {
         hash = 31 * hash + name[i];
@@ -37,14 +37,14 @@ int main() {
     int result = 0;
     ds_hashmap map = {0};
 
-    if (ds_hashmap_init(&map, MAX_CAPACITY, my_hash, my_compare) != 0) {
+    if (ds_hashmap_init(&map, MAX_CAPACITY, my_hash, my_compare) != DS_OK) {
         DS_LOG_ERROR("Error initializing hashmap");
         return_defer(-1);
     }
 
     {
         ds_hashmap_kv kv = { .key = "name", .value = "John" };
-        if (ds_hashmap_insert(&map, &kv) != 0) {
+        if (ds_hashmap_insert(&map, &kv) != DS_OK) {
             DS_LOG_ERROR("Could not insert into hashmap");
             return_defer(-1);
         }
@@ -53,7 +53,7 @@ int main() {
     {
         int age = 3;
         ds_hashmap_kv kv = { .key = "age", .value = &age };
-        if (ds_hashmap_insert(&map, &kv) != 0) {
+        if (ds_hashmap_insert(&map, &kv) != DS_OK) {
             DS_LOG_ERROR("Could not insert into hashmap");
             return_defer(-1);
         }
@@ -61,7 +61,7 @@ int main() {
 
     {
         ds_hashmap_kv kv = { .key = "name", .value = NULL };
-        if (ds_hashmap_get(&map, &kv) != 0) {
+        if (ds_hashmap_get(&map, &kv) != DS_OK) {
             DS_LOG_ERROR("Could not get from hashmap");
             return_defer(-1);
         }
@@ -71,7 +71,7 @@ int main() {
 
     {
         ds_hashmap_kv kv = { .key = "name", .value = NULL };
-        if (ds_hashmap_get(&map, &kv) != 0) {
+        if (ds_hashmap_get(&map, &kv) != DS_OK) {
             DS_LOG_ERROR("Could not get from hashmap");
             return_defer(-1);
         }
@@ -82,7 +82,7 @@ int main() {
     {
         DS_LOG_INFO("Keys before delete:");
         my_map_print(map);
-        if (ds_hashmap_delete(&map, "age") != 0) {
+        if (ds_hashmap_delete(&map, "age") != DS_OK) {
             DS_LOG_ERROR("Could not delete from hashmap");
             return_defer(-1);
         }

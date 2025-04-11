@@ -1,4 +1,4 @@
-#define DS_AL_IMPLEMENTATION
+#define DS_LIST_ALLOCATOR_IMPLEMENTATION
 #define DS_LL_IMPLEMENTATION
 #include "../ds.h"
 
@@ -7,10 +7,9 @@
 int main() {
     int result = 0;
 
-    unsigned char data[MEMORY_SIZE];
-
-    ds_allocator allocator;
-    ds_allocator_init(&allocator, data, MEMORY_SIZE);
+    unsigned char data[MEMORY_SIZE] = {0};
+    DS_ALLOCATOR allocator = {0};
+    DS_INIT_ALLOCATOR(&allocator, data, MEMORY_SIZE);
 
     ds_linked_list queue;
     ds_linked_list_init_allocator(&queue, sizeof(int), &allocator);
@@ -19,9 +18,6 @@ int main() {
         ds_linked_list_push_back(&queue, &i);
     }
 
-    ds_allocator_dump(&allocator);
-
-    printf("Queue\n");
     for (int i = 0; i < 10; i++) {
         int value;
         if (ds_linked_list_pop_front(&queue, &value) != 0) {
@@ -29,8 +25,6 @@ int main() {
         }
         printf("Value: %d\n", value);
     }
-
-    ds_allocator_dump(&allocator);
 
 defer:
     ds_linked_list_free(&queue);
