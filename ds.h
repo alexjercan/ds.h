@@ -1,4 +1,4 @@
-// # DOCUMENTATION
+// # DS.H DOCUMENTATION
 //
 // This is a simple C library that provides some helper functions and macros
 // for memory management, logging, and error handling.
@@ -28,6 +28,7 @@
 // implementation of the string builder and string slice utilities
 // - DS_PQ_IMPLEMENTATION: Use the priority queue implementation
 // - DS_LL_IMPLEMENTATION: Use the linked list implementation
+// - DS_HM_IMPLEMENTATION: Use the hash map implementation
 //
 // ## LOGGING
 //
@@ -2682,3 +2683,10 @@ DSHDEF void ds_argparse_parser_free(ds_argparse_parser *parser) {
 }
 
 #endif
+
+// Revision history:
+// 1.0.0 (2025-04-11) Add implementation for memory allocators.
+//                    Add basic data structures (Linked List, Dynamic Array,
+//                    Priority Queue, String Builder, String Slice, Hashmap).
+//                    Add Argument Parser.
+//                    Add logging macros.
