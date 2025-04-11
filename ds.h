@@ -736,46 +736,14 @@ DSHDEF void ds_argparse_print_help(ds_argparse_parser *parser);
 DSHDEF void ds_argparse_print_version(ds_argparse_parser *parser);
 DSHDEF void ds_argparse_parser_free(ds_argparse_parser *parser);
 
-// JSON
-//
-// Json loader from string. This utility will load a string into a JSON Object
-// data structure. The allowed json objects are mappings, arrays, string,
-// numbers, null or boolean.
-
-typedef enum {
-    DS_JSON_OBJECT_STRING,
-    DS_JSON_OBJECT_NUMBER,
-    DS_JSON_OBJECT_BOOLEAN,
-    DS_JSON_OBJECT_NULL,
-    DS_JSON_OBJECT_ARRAY,
-    DS_JSON_OBJECT_MAP
-} ds_json_object_kind;
-
-typedef struct ds_json_object {
-    ds_json_object_kind kind;
-    union {
-        char *string;
-        double number;
-        boolean boolean;
-        ds_dynamic_array array; /* ds_json_object */
-        ds_hashmap map; /* <char* , ds_json_object> */
-    };
-} ds_json_object;
-
-#ifndef DS_JSON_OBJECT_DUMP_INDENT
-#define DS_JSON_OBJECT_DUMP_INDENT 2
-#endif // DS_JSON_OBJECT_DUMP_INDENT
-
-#ifndef DS_JSON_OBJECT_MAP_MAX_CAPACITY
-#define DS_JSON_OBJECT_MAP_MAX_CAPACITY 100
-#endif // DS_JSON_OBJECT_MAP_MAX_CAPACITY
-
-DSHDEF ds_result ds_json_object_load(char *buffer, unsigned long buffer_len, ds_json_object *object);
-DSHDEF ds_result ds_json_object_dump(ds_json_object *object, char **buffer);
-DSHDEF ds_result ds_json_object_debug(ds_json_object *object);
-DSHDEF ds_result ds_json_object_free(ds_json_object *object);
-
 #endif // DS_H
+
+#ifdef DS_IMPLEMENTATION
+#define DS_DA_IMPLEMENTATION
+#define DS_SB_IMPLEMENTATION
+#define DS_PQ_IMPLEMENTATION
+#define DS_LL_IMPLEMENTATION
+#endif // DS_IMPLEMENTATION
 
 #ifdef DS_IO_IMPLEMENTATION
 #define DS_SB_IMPLEMENTATION
