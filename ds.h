@@ -330,6 +330,34 @@ DSHDEF void ds_list_allocator_dump(ds_list_allocator allocator);
 #define DS_STRCMP(str1, str2) DS_MEMCMP(str1, str2, DS_MIN(DS_STRLEN(str1), DS_STRLEN(str2)))
 #endif
 
+// DS_SORT
+//
+// The DS_SORT macro is used to sort an array
+#if defined(DS_SORT) // ok
+#elif !defined(DS_NO_STDLIB)
+#define DS_SORT(allocator, items, count, size, compare) qsort(items, count, size, compare)
+#elif defined(DS_NO_STDLIB)
+
+static inline void bubble_sort(void *allocator, void *items,
+                               unsigned long count, unsigned long size,
+                               int (*compare)(const void *, const void *)) {
+    for (unsigned long i = 0; i < count - 1; i++) {
+        for (unsigned long j = i + 1; j < count; j++) {
+            if (compare((char *)items + i * size, (char *)items + j * size) > 0) {
+                void *temp = DS_MALLOC(allocator, size);
+                DS_MEMCPY(temp, (char *)items + i * size, size);
+                DS_MEMCPY((char *)items + i * size, (char *)items + j * size, size);
+                DS_MEMCPY((char *)items + j * size, temp, size);
+                DS_FREE(allocator, temp);
+            }
+        }
+    }
+}
+
+#define DS_SORT(allocator, items, count, size, compare) bubble_sort(allocator, items, count, size, compare)
+
+#endif
+
 static inline void *allocator_realloc(void *allocator, void *ptr, unsigned long old_sz, unsigned long new_sz) {
     (void)(allocator); // Suppress unused parameter warning
     void *new_ptr = DS_MALLOC(allocator, new_sz);
@@ -1084,7 +1112,7 @@ defer:
 // This uses the qsort algorithm
 DSHDEF void ds_dynamic_array_sort(ds_dynamic_array *da,
                                   int (*compare)(const void *, const void *)) {
-    qsort(da->items, da->count, da->item_size, compare);
+    DS_SORT(da->allocator, da->items, da->count, da->item_size, compare);
 }
 
 // Reverse the dynamic array
