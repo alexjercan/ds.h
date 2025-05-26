@@ -79,6 +79,8 @@
 #define NULL ((void *)0)
 #endif
 
+#define UNUSED(x) (void)(x)
+
 #ifndef DSHDEF
 #ifdef DSH_STATIC
 #define DSHDEF static
@@ -118,7 +120,6 @@ typedef int boolean;
 #define DS_EXIT(code) exit(code)
 #else
 #define DS_EXIT(code)
-#warning "DS_EXIT is not defined, using empty definition"
 #endif
 
 // ARENA ALLOCATOR
@@ -161,15 +162,15 @@ DSHDEF void ds_list_allocator_dump(ds_list_allocator allocator);
 // to choose between the arena allocator and the list allocator
 // based on their needs.
 #if defined(DS_ALLOCATOR) // ok
-#elif defined(DS_ARENA_ALLOCATOR_IMPLEMENTATION)
+#elif defined(DS_ARENA_ALLOCATOR)
 #define DS_ALLOCATOR ds_arena_allocator
-#elif defined(DS_LIST_ALLOCATOR_IMPLEMENTATION)
+#elif defined(DS_LIST_ALLOCATOR)
 #define DS_ALLOCATOR ds_list_allocator
 #elif !defined(DS_NO_STDLIB)
 #define DS_ALLOCATOR void *
 #else
 #define DS_ALLOCATOR void *
-#error "DS_NO_STDLIB requires either DS_ARENA_ALLOCATOR_IMPLEMENTATION or DS_LIST_ALLOCATOR_IMPLEMENTATION"
+#error "DS_NO_STDLIB requires either DS_ARENA_ALLOCATOR or DS_LIST_ALLOCATOR"
 #endif
 
 // DS_INIT_ALLOCATOR
@@ -178,12 +179,17 @@ DSHDEF void ds_list_allocator_dump(ds_list_allocator allocator);
 // based on the selected implementation. It allows the user
 // to initialize the allocator with a block of memory and a size.
 #if defined(DS_INIT_ALLOCATOR) // ok
-#elif defined(DS_ARENA_ALLOCATOR_IMPLEMENTATION)
+#elif defined(DS_ARENA_ALLOCATOR)
 #define DS_INIT_ALLOCATOR(allocator, memory, size) ds_arena_allocator_init(allocator, memory, size)
-#elif defined(DS_LIST_ALLOCATOR_IMPLEMENTATION)
+#elif defined(DS_LIST_ALLOCATOR)
 #define DS_INIT_ALLOCATOR(allocator, memory, size) ds_list_allocator_init(allocator, memory, size)
 #elif !defined(DS_NO_STDLIB)
-#define DS_INIT_ALLOCATOR(allocator, memory, size)
+#define DS_INIT_ALLOCATOR(allocator, memory, size)                             \
+    do {                                                                       \
+        UNUSED(allocator);                                                     \
+        UNUSED(memory);                                                        \
+        UNUSED(size);                                                          \
+    } while (0)
 #else
 #define DS_INIT_ALLOCATOR(allocator, memory, size)
 #endif
@@ -195,9 +201,9 @@ DSHDEF void ds_list_allocator_dump(ds_list_allocator allocator);
 // to allocate memory of a specified size
 // and returns a pointer to the allocated memory.
 #if defined(DS_MALLOC) // ok
-#elif defined(DS_ARENA_ALLOCATOR_IMPLEMENTATION)
+#elif defined(DS_ARENA_ALLOCATOR)
 #define DS_MALLOC(allocator, size) ds_arena_allocator_alloc(allocator, size)
-#elif defined(DS_LIST_ALLOCATOR_IMPLEMENTATION)
+#elif defined(DS_LIST_ALLOCATOR)
 #define DS_MALLOC(allocator, size) ds_list_allocator_alloc(allocator, size)
 #elif !defined(DS_NO_STDLIB)
 #define DS_MALLOC(allocator, size) malloc(size)
@@ -212,9 +218,9 @@ DSHDEF void ds_list_allocator_dump(ds_list_allocator allocator);
 // to free memory that was previously allocated
 // and returns a pointer to the freed memory.
 #if defined(DS_FREE) // ok
-#elif defined(DS_ARENA_ALLOCATOR_IMPLEMENTATION)
+#elif defined(DS_ARENA_ALLOCATOR)
 #define DS_FREE(allocator, ptr)
-#elif defined(DS_LIST_ALLOCATOR_IMPLEMENTATION)
+#elif defined(DS_LIST_ALLOCATOR)
 #define DS_FREE(allocator, ptr) ds_list_allocator_free(allocator, ptr)
 #elif !defined(DS_NO_STDLIB)
 #define DS_FREE(allocator, ptr) free(ptr)
@@ -227,9 +233,9 @@ DSHDEF void ds_list_allocator_dump(ds_list_allocator allocator);
 // The DS_CLEAR macro is used to clear the allocator
 // based on the selected implementation.
 #if defined(DS_CLEAR) // ok
-#elif defined(DS_ARENA_ALLOCATOR_IMPLEMENTATION)
+#elif defined(DS_ARENA_ALLOCATOR)
 #define DS_CLEAR(allocator) ds_arena_allocator_clear(allocator)
-#elif defined(DS_LIST_ALLOCATOR_IMPLEMENTATION)
+#elif defined(DS_LIST_ALLOCATOR)
 #define DS_CLEAR(allocator) ds_list_allocator_clear(allocator)
 #elif !defined(DS_NO_STDLIB)
 #define DS_CLEAR(allocator)
@@ -242,9 +248,9 @@ DSHDEF void ds_list_allocator_dump(ds_list_allocator allocator);
 // The DS_DUMP macro is used to dump the allocator
 // based on the selected implementation.
 #if defined(DS_DUMP) // ok
-#elif defined(DS_ARENA_ALLOCATOR_IMPLEMENTATION)
+#elif defined(DS_ARENA_ALLOCATOR)
 #define DS_DUMP_ALLOCATOR(allocator) ds_arena_allocator_dump(allocator)
-#elif defined(DS_LIST_ALLOCATOR_IMPLEMENTATION)
+#elif defined(DS_LIST_ALLOCATOR)
 #define DS_DUMP_ALLOCATOR(allocator) ds_list_allocator_dump(allocator)
 #elif !defined(DS_NO_STDLIB)
 #define DS_DUMP_ALLOCATOR(allocator)
@@ -267,6 +273,26 @@ DSHDEF void ds_list_allocator_dump(ds_list_allocator allocator);
 #else
 #define DS_MIN(a, b) ((a) < (b) ? (a) : (b))
 #endif
+
+#if defined(DS_ABS) // ok
+#else
+#define DS_ABS(a) ((a) >= 0 ? (a) : -(a))
+#endif
+
+// DS_MEMSET
+//
+// The DS_MEMSET macro is used to set memory to a value
+#if defined(DS_MEMSET) // ok
+#elif !defined(DS_NO_STDLIB)
+#define DS_MEMSET(dst, c, size) memset(dst, c, size)
+#else
+#define DS_MEMSET(dst, c, sz)                                                  \
+    do {                                                                       \
+        for (unsigned long i = 0; i < sz; i++) {                               \
+            ((char *)dst)[i] = c;                                              \
+        }                                                                      \
+    } while (0)
+#endif // DS_MEMSET
 
 // DS_MEMCPY
 //
@@ -301,6 +327,14 @@ DSHDEF void ds_list_allocator_dump(ds_list_allocator allocator);
         }                                                                      \
         result;                                                                \
     })
+#endif
+
+// DS_ISSPACE
+#if defined(DS_ISSPACE) // ok
+#elif !defined(DS_NO_STDLIB)
+#define DS_ISSPACE(ch) isspace(ch)
+#elif defined(DS_NO_STDLIB)
+#define DS_ISSPACE(ch) (ch == ' ' || ch == '\n' || ch == '\t')
 #endif
 
 // DS_STRLEN
@@ -376,9 +410,9 @@ static inline void *allocator_realloc(void *allocator, void *ptr, unsigned long 
 //
 // The DS_REALLOC macro is used to reallocate memory
 // using the selected allocator implementation.
-#if defined(DS_ARENA_ALLOCATOR_IMPLEMENTATION)
+#if defined(DS_ARENA_ALLOCATOR)
 #define DS_REALLOC(allocator, ptr, old_sz, new_sz) allocator_realloc(allocator, ptr, old_sz, new_sz)
-#elif defined(DS_LIST_ALLOCATOR_IMPLEMENTATION)
+#elif defined(DS_LIST_ALLOCATOR)
 #define DS_REALLOC(allocator, ptr, old_sz, new_sz) allocator_realloc(allocator, ptr, old_sz, new_sz)
 #elif !defined(DS_NO_STDLIB)
 #define DS_REALLOC(allocator, ptr, old_sz, new_sz) realloc(ptr, new_sz)
@@ -426,52 +460,69 @@ static inline void *allocator_realloc(void *allocator, void *ptr, unsigned long 
 #define DS_TERMINAL_RESET "\033[0m"
 #endif
 
+#ifdef DS_NO_STDIO
+// This function needs to be defined in the user code when not using stdio
+extern void ConsoleLog(const char *format, ...);
+#endif
+
 // DS_LOG_ERROR
 //
 // The DS_LOG_ERROR macro is used to log error messages
-#if DS_LOG_LEVEL > DS_LOG_LEVEL_ERROR
+#if defined(DS_LOG_ERROR) // OK
+#elif DS_LOG_LEVEL > DS_LOG_LEVEL_ERROR
 #define DS_LOG_ERROR(format, ...)
-#else
+#elif !defined(DS_NO_STDIO)
 #define DS_LOG_ERROR(format, ...)                                              \
     fprintf(stderr,                                                            \
             DS_TERMINAL_RED "ERROR" DS_TERMINAL_RESET ": %s:%d: " format "\n", \
             __FILE__, __LINE__, ##__VA_ARGS__)
+#else
+#define DS_LOG_ERROR(format, ...) ConsoleLog(format, ##__VA_ARGS__)
 #endif
 
 // DS_LOG_WARN
 //
 // The DS_LOG_WARN macro is used to log warning messages
-#if DS_LOG_LEVEL > DS_LOG_LEVEL_WARN
+#if defined(DS_LOG_WARN) // OK
+#elif DS_LOG_LEVEL > DS_LOG_LEVEL_WARN
 #define DS_LOG_WARN(format, ...)
-#else
+#elif !defined(DS_NO_STDIO)
 #define DS_LOG_WARN(format, ...)                                               \
     fprintf(stdout,                                                            \
             DS_TERMINAL_YELLOW "WARN" DS_TERMINAL_RESET ": %s:%d: " format     \
                                "\n",                                           \
             __FILE__, __LINE__, ##__VA_ARGS__)
+#else
+#define DS_LOG_WARN(format, ...) ConsoleLog(format, ##__VA_ARGS__)
 #endif
 
 // DS_LOG_INFO
 //
 // The DS_LOG_INFO macro is used to log informational messages
-#if DS_LOG_LEVEL > DS_LOG_LEVEL_INFO
+#if defined(DS_LOG_INFO) // OK
+#elif DS_LOG_LEVEL > DS_LOG_LEVEL_INFO
 #define DS_LOG_INFO(format, ...)
-#else
+#elif !defined(DS_NO_STDIO)
 #define DS_LOG_INFO(format, ...)                                               \
     fprintf(stdout,                                                            \
             DS_TERMINAL_BLUE "INFO" DS_TERMINAL_RESET ": %s:%d: " format "\n", \
             __FILE__, __LINE__, ##__VA_ARGS__)
+#else
+#define DS_LOG_INFO(format, ...) ConsoleLog(format, ##__VA_ARGS__)
 #endif
 
 // DS_LOG_DEBUG
 //
 // The DS_LOG_DEBUG macro is used to log debug messages
-#if DS_LOG_LEVEL > DS_LOG_LEVEL_DEBUG
+#if defined(DS_LOG_DEBUG) // OK
+#elif DS_LOG_LEVEL > DS_LOG_LEVEL_DEBUG
 #define DS_LOG_DEBUG(format, ...)
-#else
+#elif !defined(DS_NO_STDIO)
 #define DS_LOG_DEBUG(format, ...)                                              \
     fprintf(stdout, "DEBUG: %s:%d: " format "\n", __FILE__, __LINE__,          \
             ##__VA_ARGS__)
+#else
+#define DS_LOG_DEBUG(format, ...) ConsoleLog(format, ##__VA_ARGS__)
 #endif
 
 // DS_PANIC
@@ -547,6 +598,7 @@ DSHDEF ds_result ds_dynamic_array_swap(ds_dynamic_array *da,
                                        unsigned long index2);
 DSHDEF ds_result ds_dynamic_array_delete(ds_dynamic_array *da,
                                          unsigned long index);
+DSHDEF void ds_dynamic_array_clear(ds_dynamic_array *da);
 DSHDEF void ds_dynamic_array_free(ds_dynamic_array *da);
 
 // STRING SLICE
@@ -700,6 +752,7 @@ DSHDEF ds_result ds_hashmap_init(ds_hashmap *map, unsigned long capacity,
                                  int (*compare)(const void *, const void *));
 DSHDEF ds_result ds_hashmap_insert(ds_hashmap *map, ds_hashmap_kv *kv);
 DSHDEF ds_result ds_hashmap_get(ds_hashmap *map, ds_hashmap_kv *kv);
+DSHDEF ds_result ds_hashmap_get_or_default(ds_hashmap *map, ds_hashmap_kv *kv, void *default_);
 DSHDEF ds_result ds_hashmap_delete(ds_hashmap *map, const void *key);
 DSHDEF unsigned long ds_hashmap_count(ds_hashmap *map);
 DSHDEF void ds_hashmap_free(ds_hashmap *map);
@@ -757,6 +810,7 @@ DSHDEF ds_result ds_argparse_add_argument(ds_argparse_parser *parser,
 DSHDEF ds_result ds_argparse_parse(ds_argparse_parser *parser, int argc,
                                    char **argv);
 DSHDEF char *ds_argparse_get_value(ds_argparse_parser *parser, char *name);
+DSHDEF char *ds_argparse_get_value_or_default(ds_argparse_parser *parser, char *name, char *default_);
 DSHDEF unsigned int ds_argparse_get_flag(ds_argparse_parser *parser,
                                          char *name);
 DSHDEF ds_result ds_argparse_get_values(ds_argparse_parser *parser, char *name,
@@ -1218,6 +1272,10 @@ defer:
     return result;
 }
 
+DSHDEF void ds_dynamic_array_clear(ds_dynamic_array *da) {
+    da->count = 0;
+}
+
 // Free the dynamic array
 DSHDEF void ds_dynamic_array_free(ds_dynamic_array *da) {
     if (da->items != NULL) {
@@ -1252,6 +1310,7 @@ DSHDEF ds_result ds_string_builder_appendn(ds_string_builder *sb,
     return ds_dynamic_array_append_many(&sb->items, (void **)str, len);
 }
 
+#ifndef DS_NO_STDLIB
 // Append a formatted string to the string builder
 //
 // Returns 0 if the string was appended successfully.
@@ -1285,6 +1344,7 @@ defer:
     }
     return result;
 }
+#endif
 
 // Append a character to the string builder
 //
@@ -1404,7 +1464,7 @@ defer:
 
 // Trim the left side of the string slice by whitespaces
 DSHDEF void ds_string_slice_trim_left_ws(ds_string_slice *ss) {
-    while (ss->len > 0 && isspace(ss->str[0])) {
+    while (ss->len > 0 && DS_ISSPACE(ss->str[0])) {
         ss->str++;
         ss->len--;
     }
@@ -1413,7 +1473,7 @@ DSHDEF void ds_string_slice_trim_left_ws(ds_string_slice *ss) {
 
 // Trim the left side of the string slice by whitespaces
 DSHDEF void ds_string_slice_trim_right_ws(ds_string_slice *ss) {
-    while (ss->len > 0 && isspace(ss->str[ss->len - 1])) {
+    while (ss->len > 0 && DS_ISSPACE(ss->str[ss->len - 1])) {
         ss->len--;
     }
 }
@@ -1542,7 +1602,7 @@ DSHDEF long ds_io_read(const char *filename, char **buffer, const char *mode) {
             return_defer(-1);
         }
 
-        memset(line, 0, sizeof(line));
+        DS_MEMSET(line, 0, sizeof(line));
     } while (line_size > 0);
 
     if (ds_string_builder_build(&sb, buffer) != 0) {
@@ -2024,6 +2084,22 @@ defer:
 // Returns 0 if it found the item. Returns 1 in case of an error
 DSHDEF ds_result ds_hashmap_get(ds_hashmap *map, ds_hashmap_kv *kv) {
     ds_result result = DS_OK;
+
+    if (ds_hashmap_get_or_default(map, kv, NULL) != DS_OK) {
+        return_defer(DS_ERR);
+    }
+
+    if (kv->value == NULL) {
+        DS_LOG_ERROR("Failed to find item in hashmap");
+        return_defer(DS_ERR);
+    }
+
+defer:
+    return result;
+}
+
+DSHDEF ds_result ds_hashmap_get_or_default(ds_hashmap *map, ds_hashmap_kv *kv, void *default_) {
+    ds_result result = DS_OK;
     boolean found = false;
 
     unsigned int index = map->hash(kv->key) % map->capacity;
@@ -2043,8 +2119,7 @@ DSHDEF ds_result ds_hashmap_get(ds_hashmap *map, ds_hashmap_kv *kv) {
     }
 
     if (!found) {
-        DS_LOG_ERROR("Failed to find item in hashmap");
-        return_defer(DS_ERR);
+        kv->value = default_;
     }
 
 defer:
@@ -2493,6 +2568,15 @@ DSHDEF char *ds_argparse_get_value(ds_argparse_parser *parser, char *long_name) 
     }
 
     return NULL;
+}
+
+DSHDEF char *ds_argparse_get_value_or_default(ds_argparse_parser *parser, char *name, char *default_) {
+    char *value = ds_argparse_get_value(parser, name);
+    if (value == NULL) {
+        return default_;
+    }
+
+    return value;
 }
 
 // Get the value of a positional argument
